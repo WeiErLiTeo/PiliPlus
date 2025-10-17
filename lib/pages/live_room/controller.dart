@@ -107,17 +107,8 @@ class LiveRoomController extends GetxController {
     }
   }
 
-  Future<void> _queryShieldInfo() async {
-    // 只有在登录状态下才获取屏蔽规则
-    if (!isLogin) return;
-    var res = await LiveHttp.getLiveInfoByUser(roomId);
-    if (res.isSuccess) {
-      shieldInfo = res.data;
-    }
-  }
-
   bool _isDanmakuBlocked(List info) {
-    // 如果屏蔽规则还未加载，则不进行任何屏蔽
+    // 如果没有加载到屏蔽规则，或者规则为空，则不进行任何屏蔽
     if (shieldInfo == null) return false;
 
     final shieldRules = shieldInfo!.shieldRules;
@@ -312,6 +303,15 @@ class LiveRoomController extends GetxController {
 
   void clearSC() {
     superChatMsg.removeWhere((e) => e.expired);
+  }
+
+  Future<void> _queryShieldInfo() async {
+    // 只有在登录状态下才获取屏蔽规则
+    if (!isLogin) return;
+    var res = await LiveHttp.getLiveInfoByUser(roomId);
+    if (res.isSuccess) {
+      shieldInfo = res.data;
+    }
   }
 
   Future<void> startLiveMsg() async {
