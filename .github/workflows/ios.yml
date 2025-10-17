@@ -1,4 +1,4 @@
-name: Build for iOS2
+name: Build for iOS
 
 on:
   pull_request:
