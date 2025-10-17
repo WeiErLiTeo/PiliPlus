@@ -105,7 +105,6 @@ class LiveRoomController extends GetxController {
     if (showSuperChat) {
       pageController = PageController();
     }
-    _queryShieldInfo();
   }
 
   Future<void> _queryShieldInfo() async {
@@ -315,7 +314,7 @@ class LiveRoomController extends GetxController {
     superChatMsg.removeWhere((e) => e.expired);
   }
 
-  void startLiveMsg() {
+  Future<void> startLiveMsg() async {
     if (messages.isEmpty) {
       prefetch();
       if (showSuperChat) {
@@ -325,16 +324,22 @@ class LiveRoomController extends GetxController {
     if (_msgStream != null) {
       return;
     }
+
+    // Ensure shield info is loaded BEFORE getting danmaku server info
+    await _queryShieldInfo();
+
     if (dmInfo != null) {
       initDm(dmInfo!);
       return;
     }
-    LiveHttp.liveRoomGetDanmakuToken(roomId: roomId).then((res) {
-      if (res['status']) {
-        dmInfo = res['data'];
-        initDm(dmInfo!);
-      }
-    });
+
+    // Get danmaku server info
+    final res = await LiveHttp.liveRoomGetDanmakuToken(roomId: roomId);
+    if (res['status']) {
+      dmInfo = res['data'];
+      // Now initialize the connection
+      initDm(dmInfo!);
+    }
   }
 
   void listener() {
