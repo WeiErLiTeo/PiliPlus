@@ -140,19 +140,18 @@ List<SettingsModel> get playSettings => [
       }
     },
   ),
-  if (Utils.isDesktop)
-    SettingsModel(
-      settingsType: SettingsType.sw1tch,
-      title: '最小化时暂停/还原时播放',
-      leading: const Icon(Icons.pause_circle_outline),
-      setKey: SettingBoxKey.pauseOnMinimize,
-      defaultVal: false,
-      onChanged: (value) {
-        try {
-          Get.find<MainController>().pauseOnMinimize = value;
-        } catch (_) {}
-      },
-    ),
+  SettingsModel(
+    settingsType: SettingsType.sw1tch,
+    title: '最小化时暂停/还原时播放',
+    leading: const Icon(Icons.pause_circle_outline),
+    setKey: SettingBoxKey.pauseOnMinimize,
+    defaultVal: false,
+    onChanged: (value) {
+      try {
+        Get.find<MainController>().pauseOnMinimize = value;
+      } catch (_) {}
+    },
+  ),
   const SettingsModel(
     settingsType: SettingsType.sw1tch,
     title: '启用键盘控制',

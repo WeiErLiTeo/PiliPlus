@@ -8,6 +8,7 @@ import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/common/video/live_quality.dart';
 import 'package:PiliPlus/models_new/live/live_danmaku/danmaku_msg.dart';
 import 'package:PiliPlus/models_new/live/live_danmaku/live_emote.dart';
+import 'package:PiliPlus/models_new/live/live_dm_block/shield_info.dart';
 import 'package:PiliPlus/models_new/live/live_dm_info/data.dart';
 import 'package:PiliPlus/models_new/live/live_room_info_h5/data.dart';
 import 'package:PiliPlus/models_new/live/live_room_play_info/codec.dart';
@@ -43,6 +44,7 @@ class LiveRoomController extends GetxController {
   );
 
   RxBool isLoaded = false.obs;
+  ShieldInfo? shieldInfo;
   Rx<RoomInfoH5Data?> roomInfoH5 = Rx<RoomInfoH5Data?>(null);
 
   Rx<int?> liveTime = Rx<int?>(null);
@@ -103,6 +105,55 @@ class LiveRoomController extends GetxController {
     if (showSuperChat) {
       pageController = PageController();
     }
+  }
+
+  bool _isDanmakuBlocked(List info) {
+    // 如果没有加载到屏蔽规则，或者规则为空，则不进行任何屏蔽
+    if (shieldInfo == null) return false;
+
+    final shieldRules = shieldInfo!.shieldRules;
+    final keywordList = shieldInfo!.keywordList;
+    final shieldUserList = shieldInfo!.shieldUserList;
+
+    // 如果所有规则都为空，则不屏蔽
+    if (shieldRules == null &&
+        (keywordList == null || keywordList.isEmpty) &&
+        (shieldUserList == null || shieldUserList.isEmpty)) {
+      return false;
+    }
+
+    // --- 解析弹幕信息 ---
+    final msg = info[1] as String;
+    final userInfo = info[2] as List;
+    final levelInfo = info[4] as List;
+    final uid = userInfo[0] as int;
+    final userLevel = levelInfo[0] as int;
+
+    // --- 应用客户端可以处理的过滤规则 ---
+
+    // 1. 根据用户等级过滤
+    // The slider value is 0-60, representing user levels 0-6.
+    // So we need to divide by 10 to get the actual level to compare.
+    if (shieldRules != null &&
+        shieldRules.level > 0 &&
+        userLevel < (shieldRules.level / 10)) {
+      return true;
+    }
+
+    // 2. 根据关键词过滤
+    if (keywordList != null &&
+        keywordList.any((keyword) => msg.contains(keyword))) {
+      return true;
+    }
+
+    // 3. 根据用户UID过滤
+    if (shieldUserList != null &&
+        shieldUserList.any((user) => user.uid == uid)) {
+      return true;
+    }
+
+    // 如果所有客户端规则都未命中，则不屏蔽该弹幕
+    return false;
   }
 
   Future<void>? playerInit({bool autoplay = true}) {
@@ -256,7 +307,16 @@ class LiveRoomController extends GetxController {
     superChatMsg.removeWhere((e) => e.expired);
   }
 
-  void startLiveMsg() {
+  Future<void> _queryShieldInfo() async {
+    // 只有在登录状态下才获取屏蔽规则
+    if (!isLogin) return;
+    var res = await LiveHttp.getLiveInfoByUser(roomId);
+    if (res.isSuccess) {
+      shieldInfo = res.data;
+    }
+  }
+
+  Future<void> startLiveMsg() async {
     if (messages.isEmpty) {
       prefetch();
       if (showSuperChat) {
@@ -266,16 +326,22 @@ class LiveRoomController extends GetxController {
     if (_msgStream != null) {
       return;
     }
+
+    // Ensure shield info is loaded BEFORE getting danmaku server info
+    await _queryShieldInfo();
+
     if (dmInfo != null) {
       initDm(dmInfo!);
       return;
     }
-    LiveHttp.liveRoomGetDanmakuToken(roomId: roomId).then((res) {
-      if (res['status']) {
-        dmInfo = res['data'];
-        initDm(dmInfo!);
-      }
-    });
+
+    // Get danmaku server info
+    final res = await LiveHttp.liveRoomGetDanmakuToken(roomId: roomId);
+    if (res['status']) {
+      dmInfo = res['data'];
+      // Now initialize the connection
+      initDm(dmInfo!);
+    }
   }
 
   void listener() {
@@ -339,6 +405,7 @@ class LiveRoomController extends GetxController {
               switch (obj['cmd']) {
                 case 'DANMU_MSG':
                   final info = obj['info'];
+                  if (_isDanmakuBlocked(info)) return;
                   final first = info[0];
                   final content = first[15];
                   final Map<String, dynamic> extra = jsonDecode(

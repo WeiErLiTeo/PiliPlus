@@ -350,21 +350,20 @@ abstract class PageUtils {
     );
   }
 
-  static void enterPip({int? width, int? height, bool isAuto = false}) {
+  static void enterPip({int? width, int? height}) {
     if (width != null && height != null) {
       Rational aspectRatio = Rational(width, height);
-      aspectRatio = aspectRatio.fitsInAndroidRequirements
-          ? aspectRatio
-          : height > width
-          ? const Rational.vertical()
-          : const Rational.landscape();
       Floating().enable(
-        isAuto
-            ? AutoEnable(aspectRatio: aspectRatio)
-            : EnableManual(aspectRatio: aspectRatio),
+        EnableManual(
+          aspectRatio: aspectRatio.fitsInAndroidRequirements
+              ? aspectRatio
+              : height > width
+              ? const Rational.vertical()
+              : const Rational.landscape(),
+        ),
       );
     } else {
-      Floating().enable(isAuto ? const AutoEnable() : const EnableManual());
+      Floating().enable(const EnableManual());
     }
   }
 

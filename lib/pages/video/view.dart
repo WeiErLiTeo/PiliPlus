@@ -198,10 +198,10 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   }
 
   // 播放器状态监听
-  Future<void> playerListener(PlayerStatus status) async {
-    bool isPlaying = status == PlayerStatus.playing;
+  Future<void> playerListener(PlayerStatus? status) async {
     try {
       if (videoDetailController.scrollCtr.hasClients) {
+        bool isPlaying = status == PlayerStatus.playing;
         if (isPlaying) {
           if (!videoDetailController.isExpanding &&
               videoDetailController.scrollCtr.offset != 0 &&
@@ -273,17 +273,6 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
         if (currentStatus == PiPStatus.disabled) {
           plPlayerController!.onLockControl(false);
         }
-      }
-    }
-    if (Platform.isAndroid &&
-        plPlayerController!.autoPiP &&
-        await Utils.sdkInt >= 12) {
-      if (isPlaying) {
-        plPlayerController!.enterPip(isAuto: true);
-      } else {
-        Utils.channel.invokeMethod('setPipAutoEnterEnabled', {
-          'autoEnable': false,
-        });
       }
     }
   }

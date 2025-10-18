@@ -309,11 +309,10 @@ class PlPlayerController {
     }
   }
 
-  void enterPip({bool isAuto = false}) {
+  void enterPip() {
     if (videoController != null) {
       final state = videoController!.player.state;
       PageUtils.enterPip(
-        isAuto: isAuto,
         width: state.width ?? width,
         height: state.height ?? height,
       );
@@ -557,16 +556,12 @@ class PlPlayerController {
     }
 
     if (Platform.isAndroid && autoPiP) {
-      Utils.sdkInt.then((sdkInt) {
-        if (sdkInt < 12) {
-          Utils.channel.setMethodCallHandler((call) async {
-            if (call.method == 'onUserLeaveHint') {
-              if (playerStatus.playing &&
-                  Get.currentRoute.startsWith('/video')) {
-                enterPip();
-              }
-            }
-          });
+      Utils.channel.setMethodCallHandler((call) async {
+        if (call.method == 'onUserLeaveHint') {
+          if (playerStatus.status.value == PlayerStatus.playing &&
+              Get.currentRoute.startsWith('/video')) {
+            enterPip();
+          }
         }
       });
     }
