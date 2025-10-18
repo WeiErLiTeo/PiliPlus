@@ -132,9 +132,11 @@ class LiveRoomController extends GetxController {
     // --- 应用客户端可以处理的过滤规则 ---
 
     // 1. 根据用户等级过滤
+    // The slider value is 0-60, representing user levels 0-6.
+    // So we need to divide by 10 to get the actual level to compare.
     if (shieldRules != null &&
         shieldRules.level > 0 &&
-        userLevel < shieldRules.level) {
+        userLevel < (shieldRules.level / 10)) {
       return true;
     }
 
