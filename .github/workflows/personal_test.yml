@@ -176,7 +176,9 @@ jobs:
             [[ -x "$apksigner" ]] || fail "找不到 apksigner：$apksigner"
             [[ -n "${FIXED_KEYSTORE_SHA256:-}" ]] || fail "缺少固定钥匙指纹"
             sign_out="$("$apksigner" verify --print-certs "$apk")" || fail "apksigner 校验失败：APK 签名无效"
-            apk_fp="$(printf '%s\n' "$sign_out" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ' :' | tr 'A-F' 'a-f')"
+            echo "=== apksigner 输出内容 ==="
+            echo "$sign_out"
+            apk_fp="$(printf '%s\n' "$sign_out" | grep -i "SHA-256 digest:" | head -n 1 | sed -E 's/.*SHA-256 digest:[[:space:]]*//I' | tr -d ' :' | tr 'A-F' 'a-f')"
             [[ -n "$apk_fp" ]] || fail "读取不到 APK 的签名指纹"
             echo "APK 签名指纹 SHA-256：$apk_fp"
             [[ "$apk_fp" == "$FIXED_KEYSTORE_SHA256" ]] \
@@ -203,6 +205,32 @@ jobs:
             echo "校验失败，已把文件名标记为：$(basename "$dst")"
           } 2>&1 | tee "$LOG_DIR/mark_unverified.log"
 
+      # 生成免解压直链（在 Actions 运行页面的 Summary 提供一键直下 APK）
+      - name: Upload APK direct link
+        id: direct_link
+        if: ${{ !cancelled() && env.APK_FILE != '' }}
+        run: |
+          set -euo pipefail
+          {
+            apk_path="build/app/outputs/flutter-apk/${{ env.APK_FILE }}"
+            resp="$(curl -s -F "file=@${apk_path}" https://tmpfiles.org/api/v1/upload || true)"
+            url="$(printf '%s\n' "$resp" | jq -r '.data.url // empty' 2>/dev/null || true)"
+            if [[ -n "$url" ]]; then
+              dl_url="${url/tmpfiles.org\//tmpfiles.org\/dl\/}"
+              echo "APK_DIRECT_URL=${dl_url}" >> "$GITHUB_ENV"
+              {
+                echo "## 🚀 手机直链下载（直接是 APK 原文件，免解压）"
+                echo
+                echo "[👉 点击直接下载 ${{ env.APK_FILE }}](${dl_url})"
+                echo
+                echo "---"
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "直链生成成功：${dl_url}"
+            else
+              echo "直链上传未能获取到有效 URL"
+            fi
+          } 2>&1 | tee "$LOG_DIR/direct_link.log" || true
+
       - name: Upload APK
         id: upload
         if: ${{ !cancelled() && env.APK_FILE != '' }}
@@ -210,7 +238,6 @@ jobs:
         with:
           name: ${{ env.APK_FILE }}
           path: build/app/outputs/flutter-apk/${{ env.APK_FILE }}
-          archive: false
           overwrite: true
           if-no-files-found: error
           retention-days: 7
@@ -237,7 +264,7 @@ jobs:
           TAIL_LINES=150
           KEY_LINES=40
 
-          STEP_ORDER=(prep checkout java setup_key flutter patch build_script build_apk rename verify mark_unverified upload)
+          STEP_ORDER=(prep checkout java setup_key flutter patch build_script build_apk rename verify mark_unverified direct_link upload)
           declare -A STEP_NAME=(
             [prep]="Prepare error log directory"
             [checkout]="Checkout repository"
@@ -250,6 +277,7 @@ jobs:
             [rename]="Rename APK to display name"
             [verify]="Verify APK"
             [mark_unverified]="Mark APK as unverified"
+            [direct_link]="Upload APK direct link"
             [upload]="Upload APK"
           )
           declare -A STEP_CMD=(
