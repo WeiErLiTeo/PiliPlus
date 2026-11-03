@@ -15,6 +15,7 @@ import 'package:PiliPlus/models/common/sponsor_block/skip_type.dart';
 import 'package:PiliPlus/pages/common/slide/common_slide_page.dart';
 import 'package:PiliPlus/pages/home/controller.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
+import 'package:PiliPlus/pages/setting/widgets/select_target_up_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/slider_dialog.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/accounts.dart';
@@ -48,13 +49,30 @@ List<SettingsModel> get extraSettings => [
       ReplyGrpc.enableIpFilter = value.pattern.isNotEmpty;
     },
   ),
-  SwitchModel(
-    title: '评论区IP过滤豁免关注博主',
-    subtitle: '若评论者为关注的博主或UP主，则不执行IP属地过滤',
-    leading: const Icon(Icons.person_pin_outlined),
-    setKey: SettingBoxKey.exemptIpFilterForFollowed,
-    defaultVal: true,
-    onChanged: (value) => ReplyGrpc.exemptIpFilterForFollowed = value,
+  PopupModel<int>(
+    title: '博主特定过滤模式',
+    leading: const Icon(Icons.tune_outlined),
+    value: () => Pref.commentIpFilterMode,
+    items: const [0, 1],
+    itemBuilder: (context, value) => Text(
+      value == 0
+          ? '模式 A：仅对我选中的博主视频开启过滤'
+          : '模式 B：全站过滤（对我选中的博主豁免）',
+    ),
+    onSelected: (value, setState) {
+      GStorage.setting.put(SettingBoxKey.commentIpFilterMode, value);
+      ReplyGrpc.commentIpFilterMode = value;
+      setState();
+    },
+  ),
+  NormalModel(
+    title: '选择生效博主',
+    leading: const Icon(Icons.people_outline),
+    getSubtitle: () =>
+        '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForIpFilter.length} 位博主',
+    onTap: (context) async {
+      await SelectTargetUpDialog.show(context);
+    },
   ),
   if (PlatformUtils.isDesktop) ...[
     SwitchModel(

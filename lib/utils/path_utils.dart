@@ -1,4 +1,5 @@
 import 'dart:io' show Platform, Process;
+import 'package:flutter/services.dart' show MethodChannel;
 
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:path/path.dart' as path;
@@ -28,6 +29,26 @@ abstract final class PathUtils {
     return shaders
         .map((shader) => path.join(baseDirectory, shader))
         .join(Platform.isWindows ? ';' : ':');
+  }
+
+  static const _channel = MethodChannel('com.example.piliplus/native');
+
+  static Future<void> openInMt(String dirPath) async {
+    if (Platform.isAndroid) {
+      try {
+        final success = await _channel.invokeMethod<bool>(
+          'openInMt',
+          {'path': dirPath},
+        );
+        if (success == false) {
+          SmartDialog.showToast('未能打开MT管理器，请检查是否已安装');
+        }
+      } catch (e) {
+        SmartDialog.showToast('打开失败: $e');
+      }
+    } else {
+      openDir(dirPath);
+    }
   }
 
   static Future<void> openDir(String dirPath) async {

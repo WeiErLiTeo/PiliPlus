@@ -291,6 +291,20 @@ abstract final class Pref {
   static String get banIpForReply =>
       _setting.get(SettingBoxKey.banIpForReply, defaultValue: '');
 
+  static int get commentIpFilterMode =>
+      _setting.get(SettingBoxKey.commentIpFilterMode, defaultValue: 0);
+
+  static Set<int> get targetUpMidsForIpFilter {
+    final list = _setting.get(SettingBoxKey.targetUpMidsForIpFilter, defaultValue: <dynamic>[]);
+    if (list is List) {
+      return list.map((e) => (e as num).toInt()).toSet();
+    }
+    return <int>{};
+  }
+
+  static set targetUpMidsForIpFilter(Set<int> mids) =>
+      _setting.put(SettingBoxKey.targetUpMidsForIpFilter, mids.toList());
+
   static bool get exemptIpFilterForFollowed =>
       _setting.get(SettingBoxKey.exemptIpFilterForFollowed, defaultValue: true);
 

@@ -10,6 +10,7 @@ import 'package:PiliPlus/pages/download/detail/view.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/bili_utils.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
+import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:get/get_core/src/get_main.dart';
@@ -65,6 +66,13 @@ class PageInfoItem<T extends MultiSelectData> extends StatelessWidget {
                     );
                   },
                   child: const Text('删除', style: TextStyle(fontSize: 14)),
+                ),
+                DialogOption(
+                  onPressed: () {
+                    Get.back();
+                    PathUtils.openInMt(pageInfo.dirPath);
+                  },
+                  child: const Text('在 MT 管理器中查看原始文件', style: TextStyle(fontSize: 14)),
                 ),
                 DialogOption(
                   onPressed: () {

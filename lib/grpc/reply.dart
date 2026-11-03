@@ -22,7 +22,8 @@ abstract final class ReplyGrpc {
     caseSensitive: false,
   );
   static bool enableIpFilter = replyIpRegExp.pattern.isNotEmpty;
-  static bool exemptIpFilterForFollowed = Pref.exemptIpFilterForFollowed;
+  static int commentIpFilterMode = Pref.commentIpFilterMode;
+  static Set<int> targetUpMids = Pref.targetUpMidsForIpFilter;
 
   // static Future replyInfo({required int rpid}) {
   //   return _request(
@@ -102,25 +103,34 @@ abstract final class ReplyGrpc {
         reply.content.atNameToMid.length >= blockReplyAtCount!;
   }
 
-  static bool _needFilterIp(ReplyInfo reply) {
+  static bool shouldFilterIpForUp(int? upMid) {
     if (!enableIpFilter) return false;
-    if (exemptIpFilterForFollowed &&
-        (reply.replyControl.following || reply.replyControl.upReply)) {
-      return false;
+    final isTarget = upMid != null && targetUpMids.contains(upMid);
+    if (commentIpFilterMode == 0) {
+      // 模式 A：仅对我选中的博主视频开启过滤
+      return isTarget;
+    } else {
+      // 模式 B：全站过滤，但我选中的博主豁免
+      return !isTarget;
     }
-    if (reply.replyControl.hasLocation()) {
+  }
+
+  static bool needRemoveGrpcWithUp(ReplyInfo reply, int? upMid) {
+    if (GlobalData().blackMids.contains(reply.mid.toInt()) ||
+        _blockReplyAtCount(reply) ||
+        _blockAtOnlyReply(reply) ||
+        (antiGoodsReply && _needRemoveGoodGrpc(reply)) ||
+        (enableFilter && replyRegExp.hasMatch(reply.content.message))) {
+      return true;
+    }
+    if (shouldFilterIpForUp(upMid) && reply.replyControl.hasLocation()) {
       return replyIpRegExp.hasMatch(reply.replyControl.location);
     }
     return false;
   }
 
   static bool needRemoveGrpc(ReplyInfo reply) {
-    return GlobalData().blackMids.contains(reply.mid.toInt()) ||
-        _blockReplyAtCount(reply) ||
-        _blockAtOnlyReply(reply) ||
-        (antiGoodsReply && _needRemoveGoodGrpc(reply)) ||
-        (enableFilter && replyRegExp.hasMatch(reply.content.message)) ||
-        _needFilterIp(reply);
+    return needRemoveGrpcWithUp(reply, null);
   }
 
   static Future<LoadingState<MainListReply>> mainList({
@@ -137,26 +147,31 @@ abstract final class ReplyGrpc {
         oid: Int64(oid),
         type: Int64(type),
         rpid: rpid,
-        // cursor: CursorReq(
-        //   mode: mode,
-        //   next: cursorNext,
-        // ),
         mode: mode,
         pagination: offset == null ? null : FeedPagination(offset: offset),
       ),
       MainListReply.fromBuffer,
     );
     if (res case Success(:final response)) {
-      // keyword filter
-      if (response.hasUpTop() && needRemoveGrpc(response.upTop)) {
+      final upMid = response.hasSubjectControl() && response.subjectControl.hasUpMid()
+          ? response.subjectControl.upMid.toInt()
+          : null;
+
+      if (response.hasUpTop() && needRemoveGrpcWithUp(response.upTop, upMid)) {
         response.clearUpTop();
+      }
+      if (response.hasAdminTop() && needRemoveGrpcWithUp(response.adminTop, upMid)) {
+        response.clearAdminTop();
+      }
+      if (response.hasVoteTop() && needRemoveGrpcWithUp(response.voteTop, upMid)) {
+        response.clearVoteTop();
       }
 
       if (response.replies.isNotEmpty) {
         response.replies.removeWhere((item) {
-          final hasMatch = needRemoveGrpc(item);
+          final hasMatch = needRemoveGrpcWithUp(item, upMid);
           if (!hasMatch && item.replies.isNotEmpty) {
-            item.replies.removeWhere(needRemoveGrpc);
+            item.replies.removeWhere((child) => needRemoveGrpcWithUp(child, upMid));
           }
           return hasMatch;
         });
@@ -186,7 +201,13 @@ abstract final class ReplyGrpc {
       ),
       DetailListReply.fromBuffer,
     );
-    return res..dataOrNull?.root.replies.removeWhere(needRemoveGrpc);
+    if (res case Success(:final response)) {
+      final upMid = response.hasSubjectControl() && response.subjectControl.hasUpMid()
+          ? response.subjectControl.upMid.toInt()
+          : null;
+      response.root.replies.removeWhere((child) => needRemoveGrpcWithUp(child, upMid));
+    }
+    return res;
   }
 
   static Future<LoadingState<FoldListResp>> foldList({
@@ -203,7 +224,13 @@ abstract final class ReplyGrpc {
       ),
       FoldListResp.fromBuffer,
     );
-    return res..dataOrNull?.replies.removeWhere(needRemoveGrpc);
+    if (res case Success(:final response)) {
+      final upMid = response.hasSubjectControl() && response.subjectControl.hasUpMid()
+          ? response.subjectControl.upMid.toInt()
+          : null;
+      response.replies.removeWhere((child) => needRemoveGrpcWithUp(child, upMid));
+    }
+    return res;
   }
 
   static Future<LoadingState<DialogListReply>> dialogList({
@@ -224,7 +251,13 @@ abstract final class ReplyGrpc {
       ),
       DialogListReply.fromBuffer,
     );
-    return res..dataOrNull?.replies.removeWhere(needRemoveGrpc);
+    if (res case Success(:final response)) {
+      final upMid = response.hasSubjectControl() && response.subjectControl.hasUpMid()
+          ? response.subjectControl.upMid.toInt()
+          : null;
+      response.replies.removeWhere((child) => needRemoveGrpcWithUp(child, upMid));
+    }
+    return res;
   }
 
   static Future<LoadingState<SearchItemReply>> searchItem({

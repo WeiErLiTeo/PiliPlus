@@ -99,6 +99,13 @@ class DetailItem extends StatelessWidget {
                   child: const Text('删除', style: TextStyle(fontSize: 14)),
                 ),
                 DialogOption(
+                  onPressed: () {
+                    Get.back();
+                    PathUtils.openInMt(entry.entryDirPath);
+                  },
+                  child: const Text('在 MT 管理器中查看原始文件', style: TextStyle(fontSize: 14)),
+                ),
+                DialogOption(
                   onPressed: () async {
                     Get.back();
                     final res = await downloadService.downloadDanmaku(

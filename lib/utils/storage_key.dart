@@ -92,6 +92,8 @@ abstract final class SettingBoxKey {
       horizontalPreview = 'horizontalPreview',
       banWordForReply = 'banWordForReply',
       banIpForReply = 'banIpForReply',
+      commentIpFilterMode = 'commentIpFilterMode',
+      targetUpMidsForIpFilter = 'targetUpMidsForIpFilter',
       exemptIpFilterForFollowed = 'exemptIpFilterForFollowed',
       banWordForZone = 'banWordForZone',
       savedRcmdTip = 'savedRcmdTip',
