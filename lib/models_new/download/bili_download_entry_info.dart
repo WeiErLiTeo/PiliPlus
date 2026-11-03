@@ -132,6 +132,21 @@ class BiliDownloadEntryInfo with MultiSelectData {
             );
           },
         ),
+        if (isCompleted) ...[
+          PopupMenuItem(
+            height: 38,
+            child: const Text('合并为 MP4', style: TextStyle(fontSize: 13)),
+            onTap: () => PathUtils.mergeToMp4(
+              entryDirPath: entryDirPath,
+              title: showTitle,
+            ),
+          ),
+          PopupMenuItem(
+            height: 38,
+            child: const Text('在 MT 管理器中查看原始文件', style: TextStyle(fontSize: 13)),
+            onTap: () => PathUtils.openInMt(entryDirPath),
+          ),
+        ],
         if (PlatformUtils.isDesktop)
           PopupMenuItem(
             height: 38,

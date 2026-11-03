@@ -67,6 +67,17 @@ class PageInfoItem<T extends MultiSelectData> extends StatelessWidget {
                   },
                   child: const Text('删除', style: TextStyle(fontSize: 14)),
                 ),
+                if (pageInfo.entries.length == 1 && pageInfo.entries.first.isCompleted)
+                  DialogOption(
+                    onPressed: () {
+                      Get.back();
+                      PathUtils.mergeToMp4(
+                        entryDirPath: pageInfo.entries.first.entryDirPath,
+                        title: pageInfo.entries.first.showTitle,
+                      );
+                    },
+                    child: const Text('合并为 MP4', style: TextStyle(fontSize: 14)),
+                  ),
                 DialogOption(
                   onPressed: () {
                     Get.back();

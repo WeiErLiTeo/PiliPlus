@@ -1,7 +1,7 @@
 import 'dart:io' show Platform, Process;
 import 'package:flutter/services.dart' show MethodChannel;
-
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as path;
 
 late final String tmpDirPath;
@@ -48,6 +48,72 @@ abstract final class PathUtils {
       }
     } else {
       openDir(dirPath);
+    }
+  }
+
+  static Future<void> mergeToMp4({
+    required String entryDirPath,
+    required String title,
+  }) async {
+    if (!Platform.isAndroid) {
+      SmartDialog.showToast('当前平台暂不支持一键合并');
+      return;
+    }
+    SmartDialog.showLoading(msg: '正在合并为 MP4，请稍候...');
+    try {
+      final res = await _channel.invokeMapMethod<String, dynamic>(
+        'mergeToMp4',
+        {
+          'entryDirPath': entryDirPath,
+          'title': title,
+        },
+      );
+      SmartDialog.dismiss(status: SmartStatus.loading);
+      if (res?['success'] == true) {
+        final outputPath = res?['outputPath'] as String? ?? '';
+        SmartDialog.show(
+          builder: (context) => AlertDialog(
+            title: const Text('合并成功'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('已成功生成完整 MP4 视频，保存路径：'),
+                const SizedBox(height: 8),
+                SelectableText(
+                  outputPath,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '已保存至系统 Download/PiliPlus 目录，可在相册或 MT 管理器中直接查看。',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  SmartDialog.dismiss();
+                  if (outputPath.isNotEmpty) {
+                    openInMt(outputPath);
+                  }
+                },
+                child: const Text('在 MT 管理器中查看'),
+              ),
+              FilledButton(
+                onPressed: SmartDialog.dismiss,
+                child: const Text('知道了'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        SmartDialog.showToast('合并失败: ${res?['error'] ?? '未知错误'}');
+      }
+    } catch (e) {
+      SmartDialog.dismiss(status: SmartStatus.loading);
+      SmartDialog.showToast('合并出错: $e');
     }
   }
 
