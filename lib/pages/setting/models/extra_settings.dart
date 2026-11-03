@@ -1,6 +1,7 @@
 import 'dart:io' show Platform, Directory;
 
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
+import 'package:PiliPlus/grpc/reply.dart';
 import 'package:PiliPlus/common/widgets/dialog/simple_dialog_option.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart'
     show RefreshIndicator, displacement, refreshDragExtent;
@@ -38,6 +39,23 @@ import 'package:material_design_icons_flutter/material_design_icons_flutter.dart
 import 'package:material_ui/material_ui.dart' hide RefreshIndicator;
 
 List<SettingsModel> get extraSettings => [
+  getBanWordModel(
+    title: '评论区用户IP属地过滤',
+    key: SettingBoxKey.banIpForReply,
+    banScope: '评论区',
+    onChanged: (value) {
+      ReplyGrpc.replyIpRegExp = value;
+      ReplyGrpc.enableIpFilter = value.pattern.isNotEmpty;
+    },
+  ),
+  SwitchModel(
+    title: '评论区IP过滤豁免关注博主',
+    subtitle: '若评论者为关注的博主或UP主，则不执行IP属地过滤',
+    leading: const Icon(Icons.person_pin_outlined),
+    setKey: SettingBoxKey.exemptIpFilterForFollowed,
+    defaultVal: true,
+    onChanged: (value) => ReplyGrpc.exemptIpFilterForFollowed = value,
+  ),
   if (PlatformUtils.isDesktop) ...[
     SwitchModel(
       title: '退出时最小化',

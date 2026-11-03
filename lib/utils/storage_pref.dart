@@ -288,6 +288,12 @@ abstract final class Pref {
   static String get banWordForReply =>
       _setting.get(SettingBoxKey.banWordForReply, defaultValue: '');
 
+  static String get banIpForReply =>
+      _setting.get(SettingBoxKey.banIpForReply, defaultValue: '');
+
+  static bool get exemptIpFilterForFollowed =>
+      _setting.get(SettingBoxKey.exemptIpFilterForFollowed, defaultValue: true);
+
   static String get banWordForZone =>
       _setting.get(SettingBoxKey.banWordForZone, defaultValue: '');
 

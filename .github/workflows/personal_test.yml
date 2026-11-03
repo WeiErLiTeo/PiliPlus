@@ -1,0 +1,385 @@
+name: 个人测试
+
+on:
+  push:
+    branches:
+      - yt
+      - yt3
+      - rust-local-force
+      - main
+      - feat-comment-ip-filter
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: '构建说明（可选）'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: personal-test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APPLICATION_ID: com.example.piliplus
+
+jobs:
+  build-apk:
+    name: Build Android arm64 APK (个人测试)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.base_ref == github.event.repository.default_branch }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Prepare error log directory
+        id: prep
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/step-logs"
+          echo "LOG_DIR=$RUNNER_TEMP/step-logs" >> "$GITHUB_ENV"
+
+      - name: Checkout repository
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        id: java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          cache: 'gradle'
+          cache-dependency-path: |
+            android/*.gradle*
+            android/**/gradle-wrapper.properties
+
+      - name: Use fixed release keystore
+        id: setup_key
+        run: |
+          set -euo pipefail
+          ks="android/app/release.keystore"
+          {
+            if [[ ! -f "$ks" ]]; then
+              echo "::error title=缺少固定签名钥匙::未在仓库中找到 $ks"
+              exit 1
+            fi
+            info="$(keytool -list -v -keystore "$ks" -storepass android -alias androiddebugkey -J-Duser.language=en)" \
+              || { echo "::error title=固定签名钥匙读取失败::keytool 读取 $ks 失败"; exit 1; }
+            fp="$(printf '%s\n' "$info" | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | head -n 1 | tr -d ':' | tr 'A-F' 'a-f')"
+            if [[ -z "$fp" ]]; then
+              echo "::error title=固定签名钥匙读取失败::读取不到钥匙 SHA-256 指纹"
+              exit 1
+            fi
+            echo "storeFile=release.keystore" > android/key.properties
+            echo "storePassword=android" >> android/key.properties
+            echo "keyAlias=androiddebugkey" >> android/key.properties
+            echo "keyPassword=android" >> android/key.properties
+            echo "FIXED_KEYSTORE_SHA256=${fp}" >> "$GITHUB_ENV"
+            echo "固定签名钥匙就绪：${ks}"
+            echo "钥匙 SHA-256 指纹：${fp}"
+          } 2>&1 | tee "$LOG_DIR/setup_key.log"
+
+      - name: Set up Flutter
+        id: flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+
+      - name: Apply Framework Patch
+        id: patch
+        shell: pwsh
+        run: |
+          lib/scripts/patch.ps1 android *>&1 | Tee-Object -FilePath "$env:LOG_DIR/patch.log"
+
+      - name: Set and Extract version
+        id: build_script
+        shell: pwsh
+        run: |
+          lib/scripts/build.ps1 android *>&1 | Tee-Object -FilePath "$env:LOG_DIR/build_script.log"
+
+      - name: Flutter build APK (arm64-v8a)
+        id: build_apk
+        run: |
+          set -euo pipefail
+          {
+            flutter build apk --release --split-per-abi --target-platform android-arm64 --dart-define-from-file=pili_release.json --no-pub
+          } 2>&1 | tee "$LOG_DIR/build_apk.log"
+
+      - name: Rename APK to display name
+        id: rename
+        run: |
+          set -euo pipefail
+          {
+            apk_dir="build/app/outputs/flutter-apk"
+            ver="$(grep -m1 '^version:' pubspec.yaml | sed 's/^version:[[:space:]]*//' | cut -d+ -f1 || true)"
+            if [[ -z "$ver" ]]; then
+              echo "::error::无法从 pubspec.yaml 读取 version"
+              exit 1
+            fi
+            src="$apk_dir/app-arm64-v8a-release.apk"
+            if [[ ! -f "$src" ]]; then
+              echo "::error::未找到构建产物 $src"
+              ls -lh "$apk_dir"/ || true
+              exit 1
+            fi
+            dst="$apk_dir/PiliPlus-${ver}-arm64-v8a-release.apk"
+            mv "$src" "$dst"
+            echo "APK_FILE=$(basename "$dst")" >> "$GITHUB_ENV"
+            echo "=== 重命名后的产物 ==="
+            ls -lh "$apk_dir"/
+          } 2>&1 | tee "$LOG_DIR/rename.log"
+
+      - name: Verify APK
+        id: verify
+        run: |
+          set -euo pipefail
+          {
+            apk_dir="build/app/outputs/flutter-apk"
+            apk="${apk_dir}/${APK_FILE}"
+            aapt2="$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -n 1)"
+            apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+
+            fail() { echo "::error title=APK 校验失败::$1"; exit 1; }
+
+            ls -lh "$apk_dir"/
+            [[ -f "$apk" ]] || fail "未找到 APK：$apk"
+            unzip -l "$apk" > /dev/null || fail "产物损坏，unzip 无法读取：$apk"
+            echo "OK ($(du -h "$apk" | cut -f1))"
+
+            [[ -x "$aapt2" ]] || fail "找不到 aapt2：$aapt2"
+            badging="$("$aapt2" dump badging "$apk")" || fail "aapt2 dump badging 执行失败"
+
+            # 1) 包名
+            actual_pkg="$(printf '%s\n' "$badging" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+            [[ "$actual_pkg" == "$APPLICATION_ID" ]] \
+              || fail "包名不符：期望 ${APPLICATION_ID}，实际 '${actual_pkg}'"
+
+            # 2) ABI 只含 arm64-v8a
+            native_code="$(printf '%s\n' "$badging" | sed -n "s/^native-code: //p")"
+            [[ "$native_code" == "'arm64-v8a'" ]] \
+              || fail "ABI 不符：期望只含 'arm64-v8a'，实际 native-code: ${native_code:-<空>}"
+
+            # 3) 签名检查固定钥匙
+            [[ -x "$apksigner" ]] || fail "找不到 apksigner：$apksigner"
+            [[ -n "${FIXED_KEYSTORE_SHA256:-}" ]] || fail "缺少固定钥匙指纹"
+            sign_out="$("$apksigner" verify --print-certs "$apk")" || fail "apksigner 校验失败：APK 签名无效"
+            apk_fp="$(printf '%s\n' "$sign_out" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ' :' | tr 'A-F' 'a-f')"
+            [[ -n "$apk_fp" ]] || fail "读取不到 APK 的签名指纹"
+            echo "APK 签名指纹 SHA-256：$apk_fp"
+            [[ "$apk_fp" == "$FIXED_KEYSTORE_SHA256" ]] \
+              || fail "签名不是固定钥匙：期望 ${FIXED_KEYSTORE_SHA256}，实际 ${apk_fp}。"
+
+            echo "APK 校验全部通过：$apk"
+          } 2>&1 | tee "$LOG_DIR/verify.log"
+
+      - name: Mark APK as unverified
+        id: mark_unverified
+        if: ${{ !cancelled() && env.APK_FILE != '' && steps.verify.outcome == 'failure' }}
+        run: |
+          set -euo pipefail
+          {
+            apk_dir="build/app/outputs/flutter-apk"
+            src="${apk_dir}/${APK_FILE}"
+            dst="${apk_dir}/${APK_FILE%.apk}-未通过校验.apk"
+            if [[ ! -f "$src" ]]; then
+              echo "::error::找不到要标记的 APK：$src"
+              exit 1
+            fi
+            mv "$src" "$dst"
+            echo "APK_FILE=$(basename "$dst")" >> "$GITHUB_ENV"
+            echo "校验失败，已把文件名标记为：$(basename "$dst")"
+          } 2>&1 | tee "$LOG_DIR/mark_unverified.log"
+
+      - name: Upload APK
+        id: upload
+        if: ${{ !cancelled() && env.APK_FILE != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_FILE }}
+          path: build/app/outputs/flutter-apk/${{ env.APK_FILE }}
+          archive: false
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+
+      # ============================================================
+      # 报错流程：只在有步骤失败时运行
+      # ============================================================
+      - name: Report failure (failed step + copyable error)
+        if: failure()
+        env:
+          STEPS_JSON: ${{ toJSON(steps) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -uo pipefail
+          export LC_ALL=C.UTF-8
+
+          LOG_DIR="${LOG_DIR:-${RUNNER_TEMP}/step-logs}"
+          mkdir -p "$LOG_DIR"
+          TMP="$(mktemp -d)"
+          REPORT="$LOG_DIR/error-report.md"
+          TAIL_LINES=150
+          KEY_LINES=40
+
+          STEP_ORDER=(prep checkout java setup_key flutter patch build_script build_apk rename verify mark_unverified upload)
+          declare -A STEP_NAME=(
+            [prep]="Prepare error log directory"
+            [checkout]="Checkout repository"
+            [java]="Set up Java 17"
+            [setup_key]="Use fixed release keystore"
+            [flutter]="Set up Flutter"
+            [patch]="Apply Framework Patch"
+            [build_script]="Set and Extract version"
+            [build_apk]="Flutter build APK (arm64-v8a)"
+            [rename]="Rename APK to display name"
+            [verify]="Verify APK"
+            [mark_unverified]="Mark APK as unverified"
+            [upload]="Upload APK"
+          )
+          declare -A STEP_CMD=(
+            [prep]="mkdir -p \$RUNNER_TEMP/step-logs"
+            [setup_key]="配置固定签名钥匙 release.keystore 并写入 key.properties"
+            [patch]="lib/scripts/patch.ps1 android"
+            [build_script]="lib/scripts/build.ps1 android"
+            [build_apk]="flutter build apk --release --split-per-abi --target-platform android-arm64 --dart-define-from-file=pili_release.json --no-pub"
+            [rename]="读取 pubspec.yaml 版本号并重命名 APK"
+            [verify]="aapt2/unzip/apksigner 校验：包名、ABI、固定钥匙签名指纹"
+            [mark_unverified]="给 APK 文件名加上「-未通过校验」"
+          )
+
+          clean() { sed -E 's/\x1b\[[0-9;?]*[A-Za-z]//g' | tr '\r' '\n'; }
+
+          esc_data() {
+            local s="$1"
+            s="${s//'%'/'%25'}"; s="${s//$'\r'/'%0D'}"; s="${s//$'\n'/'%0A'}"
+            printf '%s' "$s"
+          }
+          esc_prop() {
+            local s
+            s="$(esc_data "$1")"
+            s="${s//':'/'%3A'}"; s="${s//','/'%2C'}"
+            printf '%s' "$s"
+          }
+
+          extract_key_lines() {
+            local id="$1" file="$2" pat
+            pat='^e: |: error: |^error: |^Error: |^ERROR: |Execution failed for task|^FAILURE: |Gradle task .* failed|Exception in thread|command not found|No such file or directory|Permission denied'
+            awk -v pat="$pat" '
+              ctx > 0 { print; ctx--; next }
+              /^[*] What went wrong:/ { print; ctx = 3; next }
+              $0 ~ pat { print }
+            ' "$file" | awk '!seen[$0]++' | cut -c1-600 | head -n "$KEY_LINES"
+          }
+
+          failed=()
+          for id in "${STEP_ORDER[@]}"; do
+            outcome="$(jq -r --arg id "$id" '.[$id].outcome // "skipped"' <<<"$STEPS_JSON" 2>/dev/null)"
+            if [[ "$outcome" == "failure" ]]; then failed+=("$id"); fi
+          done
+          while IFS= read -r id; do
+            [[ -z "$id" ]] && continue
+            if [[ " ${STEP_ORDER[*]} " != *" $id "* ]]; then failed+=("$id"); fi
+          done < <(jq -r 'to_entries[] | select(.value.outcome == "failure") | .key' <<<"$STEPS_JSON" 2>/dev/null)
+
+          {
+            echo "## 构建失败"
+            echo
+          } > "$REPORT"
+
+          if (( ${#failed[@]} == 0 )); then
+            {
+              echo "未能定位到具体失败的步骤（可能是超时或 Runner 异常），请打开运行页面查看：${RUN_URL}"
+            } >> "$REPORT"
+            echo "::error title=构建失败::未能定位到具体失败的步骤，请查看运行页面日志"
+          fi
+
+          for id in "${failed[@]}"; do
+            name="${STEP_NAME[$id]:-$id}"
+            cmd="${STEP_CMD[$id]:-}"
+            log="$LOG_DIR/$id.log"
+            copy="$TMP/$id.copy.txt"
+            first_key=""
+
+            {
+              echo "失败步骤: ${name} (id: ${id})"
+              if [[ -n "$cmd" ]]; then echo "执行命令: ${cmd}"; fi
+              echo "仓库: ${GITHUB_REPOSITORY:-}"
+              if [[ -n "${PR_NUMBER:-}" ]]; then pr_text="PR: #${PR_NUMBER}"; elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then pr_text="推送触发"; else pr_text="手动运行"; fi
+              echo "${pr_text}  分支: ${HEAD_REF:-?}  提交: ${HEAD_SHA:-?}"
+              echo "运行页面: ${RUN_URL}"
+              echo
+            } > "$copy"
+
+            if [[ -s "$log" ]]; then
+              clean < "$log" > "$TMP/$id.clean"
+              total="$(wc -l < "$TMP/$id.clean" | tr -d ' ')"
+              extract_key_lines "$id" "$TMP/$id.clean" > "$TMP/$id.key"
+              first_key="$(head -n 1 "$TMP/$id.key" | sed -E 's/^[[:space:]]+//')"
+
+              {
+                echo "===== 关键错误行（自动提取）====="
+                if [[ -s "$TMP/$id.key" ]]; then
+                  cat "$TMP/$id.key"
+                else
+                  echo "（没有自动匹配到关键错误行，请看下面的日志末尾）"
+                fi
+                echo
+                if (( total > TAIL_LINES )); then
+                  echo "===== 日志末尾 ${TAIL_LINES} 行（共 ${total} 行，完整日志见 Artifact）====="
+                else
+                  echo "===== 完整日志（共 ${total} 行）====="
+                fi
+                cat -s "$TMP/$id.clean" | tail -n "$TAIL_LINES" | cut -c1-600
+              } >> "$copy"
+            else
+              {
+                echo "该步骤是官方 Action（或日志未能写出），错误日志无法在 Job 内捕获。"
+                echo "请打开运行页面，展开该步骤查看具体报错：${RUN_URL}"
+              } >> "$copy"
+            fi
+
+            sed -i -E 's/`{6,}/`````/g' "$copy"
+
+            {
+              echo "- **出错步骤**：${name}（\`${id}\`）"
+              if [[ -n "$cmd" ]]; then echo "- **执行命令**：\`${cmd}\`"; fi
+              echo
+              echo "下面整块内容可以一键复制（代码块右上角的复制按钮）："
+              echo
+              echo '``````text'
+              cat "$copy"
+              echo '``````'
+              echo
+            } >> "$REPORT"
+
+            ann_msg="步骤「${name}」失败。${first_key:+ ${first_key}}"
+            echo "::error title=$(esc_prop "构建失败：${name}")::$(esc_data "$(printf '%s' "$ann_msg" | cut -c1-800)")"
+          done
+
+          cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          rm -rf "$TMP"
+
+      - name: Upload error logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PiliPlus-错误日志-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/step-logs
+          if-no-files-found: ignore
+          retention-days: 7

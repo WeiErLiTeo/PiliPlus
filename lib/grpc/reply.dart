@@ -17,6 +17,12 @@ abstract final class ReplyGrpc {
     caseSensitive: false,
   );
   static bool enableFilter = replyRegExp.pattern.isNotEmpty;
+  static RegExp replyIpRegExp = RegExp(
+    Pref.banIpForReply,
+    caseSensitive: false,
+  );
+  static bool enableIpFilter = replyIpRegExp.pattern.isNotEmpty;
+  static bool exemptIpFilterForFollowed = Pref.exemptIpFilterForFollowed;
 
   // static Future replyInfo({required int rpid}) {
   //   return _request(
@@ -96,12 +102,25 @@ abstract final class ReplyGrpc {
         reply.content.atNameToMid.length >= blockReplyAtCount!;
   }
 
+  static bool _needFilterIp(ReplyInfo reply) {
+    if (!enableIpFilter) return false;
+    if (exemptIpFilterForFollowed &&
+        (reply.replyControl.following || reply.replyControl.upReply)) {
+      return false;
+    }
+    if (reply.replyControl.hasLocation()) {
+      return replyIpRegExp.hasMatch(reply.replyControl.location);
+    }
+    return false;
+  }
+
   static bool needRemoveGrpc(ReplyInfo reply) {
     return GlobalData().blackMids.contains(reply.mid.toInt()) ||
         _blockReplyAtCount(reply) ||
         _blockAtOnlyReply(reply) ||
         (antiGoodsReply && _needRemoveGoodGrpc(reply)) ||
-        (enableFilter && replyRegExp.hasMatch(reply.content.message));
+        (enableFilter && replyRegExp.hasMatch(reply.content.message)) ||
+        _needFilterIp(reply);
   }
 
   static Future<LoadingState<MainListReply>> mainList({
