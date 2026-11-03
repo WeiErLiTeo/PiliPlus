@@ -13,6 +13,7 @@ import 'package:PiliPlus/models/common/member/tab_type.dart';
 import 'package:PiliPlus/models/common/mine_tab_type.dart';
 import 'package:PiliPlus/models/common/msg/msg_unread_type.dart';
 import 'package:PiliPlus/models/common/nav_bar_config.dart';
+import 'package:PiliPlus/models/common/reply/comment_ip_filter_mode.dart';
 import 'package:PiliPlus/models/common/reply/reply_sort_type.dart';
 import 'package:PiliPlus/models/common/sponsor_block/segment_type.dart';
 import 'package:PiliPlus/models/common/sponsor_block/skip_type.dart';
@@ -291,8 +292,14 @@ abstract final class Pref {
   static String get banIpForReply =>
       _setting.get(SettingBoxKey.banIpForReply, defaultValue: '');
 
-  static int get commentIpFilterMode =>
-      _setting.get(SettingBoxKey.commentIpFilterMode, defaultValue: 0);
+  static CommentIpFilterMode get commentIpFilterMode =>
+      CommentIpFilterMode.values.elementAtOrNull(
+        _setting.get(
+          SettingBoxKey.commentIpFilterMode,
+          defaultValue: 0,
+        ),
+      ) ??
+      CommentIpFilterMode.targetOnly;
 
   static Set<int> get targetUpMidsForIpFilter {
     final list = _setting.get(SettingBoxKey.targetUpMidsForIpFilter, defaultValue: <dynamic>[]);

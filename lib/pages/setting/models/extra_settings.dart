@@ -11,6 +11,7 @@ import 'package:PiliPlus/common/widgets/image_grid/image_grid_view.dart'
     show ImageGridView, ImageModel;
 import 'package:PiliPlus/http/fav.dart';
 import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/models/common/reply/comment_ip_filter_mode.dart';
 import 'package:PiliPlus/models/common/sponsor_block/skip_type.dart';
 import 'package:PiliPlus/pages/common/slide/common_slide_page.dart';
 import 'package:PiliPlus/pages/home/controller.dart';
@@ -49,18 +50,13 @@ List<SettingsModel> get extraSettings => [
       ReplyGrpc.enableIpFilter = value.pattern.isNotEmpty;
     },
   ),
-  PopupModel<int>(
+  PopupModel<CommentIpFilterMode>(
     title: '博主特定过滤模式',
     leading: const Icon(Icons.tune_outlined),
     value: () => Pref.commentIpFilterMode,
-    items: const [0, 1],
-    itemBuilder: (context, value) => Text(
-      value == 0
-          ? '模式 A：仅对我选中的博主视频开启过滤'
-          : '模式 B：全站过滤（对我选中的博主豁免）',
-    ),
+    items: CommentIpFilterMode.values,
     onSelected: (value, setState) {
-      GStorage.setting.put(SettingBoxKey.commentIpFilterMode, value);
+      GStorage.setting.put(SettingBoxKey.commentIpFilterMode, value.index);
       ReplyGrpc.commentIpFilterMode = value;
       setState();
     },
@@ -70,9 +66,8 @@ List<SettingsModel> get extraSettings => [
     leading: const Icon(Icons.people_outline),
     getSubtitle: () =>
         '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForIpFilter.length} 位博主',
-    onTap: (context) async {
-      await SelectTargetUpDialog.show(context);
-    },
+    onTap: (context, setState) =>
+        SelectTargetUpDialog.show(context).whenComplete(setState),
   ),
   if (PlatformUtils.isDesktop) ...[
     SwitchModel(

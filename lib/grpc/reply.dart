@@ -4,6 +4,7 @@ import 'package:PiliPlus/grpc/bilibili/pagination.pb.dart';
 import 'package:PiliPlus/grpc/grpc_req.dart';
 import 'package:PiliPlus/grpc/url.dart';
 import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/models/common/reply/comment_ip_filter_mode.dart';
 import 'package:PiliPlus/utils/global_data.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:fixnum/fixnum.dart';
@@ -22,7 +23,7 @@ abstract final class ReplyGrpc {
     caseSensitive: false,
   );
   static bool enableIpFilter = replyIpRegExp.pattern.isNotEmpty;
-  static int commentIpFilterMode = Pref.commentIpFilterMode;
+  static CommentIpFilterMode commentIpFilterMode = Pref.commentIpFilterMode;
   static Set<int> targetUpMids = Pref.targetUpMidsForIpFilter;
 
   // static Future replyInfo({required int rpid}) {
@@ -106,7 +107,7 @@ abstract final class ReplyGrpc {
   static bool shouldFilterIpForUp(int? upMid) {
     if (!enableIpFilter) return false;
     final isTarget = upMid != null && targetUpMids.contains(upMid);
-    if (commentIpFilterMode == 0) {
+    if (commentIpFilterMode == CommentIpFilterMode.targetOnly) {
       // 模式 A：仅对我选中的博主视频开启过滤
       return isTarget;
     } else {

@@ -3,6 +3,7 @@ import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/grpc/reply.dart';
 import 'package:PiliPlus/http/follow.dart';
 import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/models/common/image_type.dart';
 import 'package:PiliPlus/models_new/follow/list.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -61,8 +62,8 @@ class _SelectTargetUpDialogState extends State<SelectTargetUpDialog> {
             _allList.addAll(r2.list ?? []);
           }
         }
-      } else if (res1 case Error(:final error)) {
-        _error = error;
+      } else if (res1 case Error(:final errMsg)) {
+        _error = errMsg;
       }
     } catch (e) {
       _error = e.toString();
