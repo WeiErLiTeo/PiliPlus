@@ -9,6 +9,7 @@ import 'package:PiliPlus/utils/app_scheme.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
 import 'package:PiliPlus/utils/id_utils.dart';
+import 'package:PiliPlus/utils/search_filter.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
@@ -75,6 +76,9 @@ class SearchVideoController
 
   @override
   List<SearchVideoItemModel>? getDataList(SearchVideoData response) {
+    if (SearchFilter.enableFilter) {
+      response.list?.removeWhere((item) => SearchFilter.filterTitle(item.title));
+    }
     return response.list;
   }
 

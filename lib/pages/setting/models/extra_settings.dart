@@ -1,7 +1,6 @@
 import 'dart:io' show Platform, Directory;
 
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
-import 'package:PiliPlus/grpc/reply.dart';
 import 'package:PiliPlus/common/widgets/dialog/simple_dialog_option.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart'
     show RefreshIndicator, displacement, refreshDragExtent;
@@ -11,12 +10,10 @@ import 'package:PiliPlus/common/widgets/image_grid/image_grid_view.dart'
     show ImageGridView, ImageModel;
 import 'package:PiliPlus/http/fav.dart';
 import 'package:PiliPlus/http/loading_state.dart';
-import 'package:PiliPlus/models/common/reply/comment_ip_filter_mode.dart';
 import 'package:PiliPlus/models/common/sponsor_block/skip_type.dart';
 import 'package:PiliPlus/pages/common/slide/common_slide_page.dart';
 import 'package:PiliPlus/pages/home/controller.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
-import 'package:PiliPlus/pages/setting/widgets/select_target_up_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/slider_dialog.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/accounts.dart';
@@ -41,34 +38,6 @@ import 'package:material_design_icons_flutter/material_design_icons_flutter.dart
 import 'package:material_ui/material_ui.dart' hide RefreshIndicator;
 
 List<SettingsModel> get extraSettings => [
-  getBanWordModel(
-    title: '评论区用户IP属地过滤',
-    key: SettingBoxKey.banIpForReply,
-    banScope: '评论区',
-    onChanged: (value) {
-      ReplyGrpc.replyIpRegExp = value;
-      ReplyGrpc.enableIpFilter = value.pattern.isNotEmpty;
-    },
-  ),
-  PopupModel<CommentIpFilterMode>(
-    title: '博主特定过滤模式',
-    leading: const Icon(Icons.tune_outlined),
-    value: () => Pref.commentIpFilterMode,
-    items: CommentIpFilterMode.values,
-    onSelected: (value, setState) {
-      GStorage.setting.put(SettingBoxKey.commentIpFilterMode, value.index);
-      ReplyGrpc.commentIpFilterMode = value;
-      setState();
-    },
-  ),
-  NormalModel(
-    title: '选择生效博主',
-    leading: const Icon(Icons.people_outline),
-    getSubtitle: () =>
-        '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForIpFilter.length} 位博主',
-    onTap: (context, setState) =>
-        SelectTargetUpDialog.show(context).whenComplete(setState),
-  ),
   if (PlatformUtils.isDesktop) ...[
     SwitchModel(
       title: '退出时最小化',

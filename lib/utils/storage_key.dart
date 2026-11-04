@@ -96,6 +96,8 @@ abstract final class SettingBoxKey {
       targetUpMidsForIpFilter = 'targetUpMidsForIpFilter',
       exemptIpFilterForFollowed = 'exemptIpFilterForFollowed',
       banWordForZone = 'banWordForZone',
+      banWordForSearch = 'banWordForSearch',
+      banWordForMemberArchive = 'banWordForMemberArchive',
       savedRcmdTip = 'savedRcmdTip',
       openInBrowser = 'openInBrowser',
       refreshDisplacement = 'refreshDisplacement',

@@ -289,6 +289,12 @@ abstract final class Pref {
   static String get banWordForReply =>
       _setting.get(SettingBoxKey.banWordForReply, defaultValue: '');
 
+  static String get banWordForSearch =>
+      _setting.get(SettingBoxKey.banWordForSearch, defaultValue: '');
+
+  static String get banWordForMemberArchive =>
+      _setting.get(SettingBoxKey.banWordForMemberArchive, defaultValue: '');
+
   static String get banIpForReply =>
       _setting.get(SettingBoxKey.banIpForReply, defaultValue: '');
 

@@ -16,6 +16,7 @@ import 'package:PiliPlus/pages/member/controller.dart';
 import 'package:PiliPlus/utils/extension/dimension_ext.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/id_utils.dart';
+import 'package:PiliPlus/utils/member_archive_filter.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:flutter/widgets.dart' show GlobalKey;
 import 'package:get/get.dart';
@@ -103,6 +104,9 @@ class MemberVideoCtr
     Success<SpaceArchiveData> response,
   ) {
     final data = response.response;
+    if (MemberArchiveFilter.enableFilter) {
+      data.item?.removeWhere((item) => MemberArchiveFilter.filterTitle(item.title));
+    }
     episodicButton = data.episodicButton;
     next = data.next;
     if (page == 0 || isLoadPrevious) {

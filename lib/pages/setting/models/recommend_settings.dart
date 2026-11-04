@@ -1,8 +1,15 @@
+import 'package:PiliPlus/grpc/reply.dart';
 import 'package:PiliPlus/http/video.dart';
+import 'package:PiliPlus/models/common/reply/comment_ip_filter_mode.dart';
 import 'package:PiliPlus/pages/rcmd/controller.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
+import 'package:PiliPlus/pages/setting/widgets/select_target_up_dialog.dart';
+import 'package:PiliPlus/utils/member_archive_filter.dart';
 import 'package:PiliPlus/utils/recommend_filter.dart';
+import 'package:PiliPlus/utils/search_filter.dart';
+import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart' hide StatefulBuilder;
@@ -66,6 +73,24 @@ List<SettingsModel> get recommendSettings => [
     banScope: '推荐、热门、分区、相关视频',
   ),
   getBanWordModel(
+    title: '搜索结果过滤',
+    key: SettingBoxKey.banWordForSearch,
+    onChanged: (value) {
+      SearchFilter.searchRegExp = value;
+      SearchFilter.enableFilter = value.pattern.isNotEmpty;
+    },
+    banScope: '搜索结果列表',
+  ),
+  getBanWordModel(
+    title: 'UP主主页视频过滤',
+    key: SettingBoxKey.banWordForMemberArchive,
+    onChanged: (value) {
+      MemberArchiveFilter.memberArchiveRegExp = value;
+      MemberArchiveFilter.enableFilter = value.pattern.isNotEmpty;
+    },
+    banScope: 'UP主个人主页视频投稿',
+  ),
+  getBanWordModel(
     title: '分区关键词过滤',
     key: SettingBoxKey.banWordForZone,
     onChanged: (value) {
@@ -104,5 +129,33 @@ List<SettingsModel> get recommendSettings => [
     setKey: SettingBoxKey.applyFilterToRelatedVideos,
     defaultVal: true,
     onChanged: (value) => RecommendFilter.applyFilterToRelatedVideos = value,
+  ),
+  getBanWordModel(
+    title: '评论区用户IP属地过滤',
+    key: SettingBoxKey.banIpForReply,
+    banScope: '评论区',
+    onChanged: (value) {
+      ReplyGrpc.replyIpRegExp = value;
+      ReplyGrpc.enableIpFilter = value.pattern.isNotEmpty;
+    },
+  ),
+  PopupModel<CommentIpFilterMode>(
+    title: '博主特定过滤模式',
+    leading: const Icon(Icons.tune_outlined),
+    value: () => Pref.commentIpFilterMode,
+    items: CommentIpFilterMode.values,
+    onSelected: (value, setState) {
+      GStorage.setting.put(SettingBoxKey.commentIpFilterMode, value.index);
+      ReplyGrpc.commentIpFilterMode = value;
+      setState();
+    },
+  ),
+  NormalModel(
+    title: '选择生效博主',
+    leading: const Icon(Icons.people_outline),
+    getSubtitle: () =>
+        '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForIpFilter.length} 位博主',
+    onTap: (context, setState) =>
+        SelectTargetUpDialog.show(context).whenComplete(setState),
   ),
 ];

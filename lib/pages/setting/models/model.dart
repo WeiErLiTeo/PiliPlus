@@ -5,7 +5,9 @@ import 'package:PiliPlus/pages/setting/widgets/popup_item.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/switch_item.dart';
 import 'package:PiliPlus/utils/storage.dart';
-import 'package:flutter/services.dart' show FilteringTextInputFormatter;
+import 'package:PiliPlus/utils/utils.dart';
+import 'package:flutter/services.dart'
+    show FilteringTextInputFormatter, Clipboard, ClipboardData;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart' hide PopupMenuItemSelected;
@@ -224,48 +226,124 @@ SettingsModel getBanWordModel({
       return subtitle;
     },
     onTap: (context, setState) {
-      String editValue = banWord;
+      final textController = TextEditingController(text: banWord);
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
-          constraints: Style.dialogFixedConstraints,
-          title: Text(title),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('使用|隔开，如：尝试|测试'),
-              TextFormField(
-                autofocus: true,
-                initialValue: editValue,
-                textInputAction: TextInputAction.newline,
-                minLines: 1,
-                maxLines: 4,
-                onChanged: (value) => editValue = value,
+        builder: (context) {
+          final theme = Theme.of(context);
+          return AlertDialog(
+            constraints: Style.dialogFixedConstraints,
+            title: Text(title),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('使用|隔开，如：尝试|测试'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: textController,
+                    autofocus: true,
+                    textInputAction: TextInputAction.newline,
+                    minLines: 2,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.all(10),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      ActionChip(
+                        avatar: const Icon(Icons.paste_outlined, size: 16),
+                        label: const Text('粘贴/追加剪贴板', style: TextStyle(fontSize: 12)),
+                        onPressed: () async {
+                          final data = await Clipboard.getData('text/plain');
+                          final clip = data?.text?.trim();
+                          if (clip == null || clip.isEmpty) {
+                            SmartDialog.showToast('剪贴板为空');
+                            return;
+                          }
+                          String formatted = clip
+                              .replaceAll(RegExp(r'[\r\n,，、;；\s]+'), '|')
+                              .replaceAll(RegExp(r'\|+'), '|');
+                          if (formatted.startsWith('|')) {
+                            formatted = formatted.substring(1);
+                          }
+                          if (formatted.endsWith('|')) {
+                            formatted = formatted.substring(0, formatted.length - 1);
+                          }
+                          if (formatted.isEmpty) return;
+                          final cur = textController.text.trim();
+                          if (cur.isNotEmpty) {
+                            textController.text =
+                                cur.endsWith('|') ? '$cur$formatted' : '$cur|$formatted';
+                          } else {
+                            textController.text = formatted;
+                          }
+                          textController.selection = TextSelection.collapsed(
+                            offset: textController.text.length,
+                          );
+                          SmartDialog.showToast('已追加剪贴板内容');
+                        },
+                      ),
+                      ActionChip(
+                        avatar: const Icon(Icons.copy_outlined, size: 16),
+                        label: const Text('复制', style: TextStyle(fontSize: 12)),
+                        onPressed: () {
+                          if (textController.text.isEmpty) {
+                            SmartDialog.showToast('内容为空');
+                            return;
+                          }
+                          Utils.copyText(textController.text);
+                        },
+                      ),
+                      ActionChip(
+                        avatar: const Icon(Icons.clear_all_outlined, size: 16),
+                        label: const Text('清空', style: TextStyle(fontSize: 12)),
+                        onPressed: () {
+                          textController.clear();
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: Get.back,
+                child: Text(
+                  '取消',
+                  style: TextStyle(color: theme.colorScheme.outline),
+                ),
+              ),
+              TextButton(
+                child: const Text('保存'),
+                onPressed: () {
+                  String val = textController.text.trim();
+                  val = val.replaceAll(RegExp(r'\|+'), '|');
+                  if (val.startsWith('|')) val = val.substring(1);
+                  if (val.endsWith('|')) val = val.substring(0, val.length - 1);
+                  try {
+                    final reg = RegExp(val, caseSensitive: false);
+                    Get.back();
+                    banWord = val;
+                    setState();
+                    onChanged(reg);
+                    SmartDialog.showToast('已保存');
+                    GStorage.setting.put(key, banWord);
+                  } catch (e) {
+                    SmartDialog.showToast('正则表达式格式不合法: $e');
+                  }
+                },
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: Get.back,
-              child: Text(
-                '取消',
-                style: TextStyle(color: ColorScheme.of(context).outline),
-              ),
-            ),
-            TextButton(
-              child: const Text('保存'),
-              onPressed: () {
-                Get.back();
-                banWord = editValue;
-                setState();
-                onChanged(RegExp(banWord, caseSensitive: false));
-                SmartDialog.showToast('已保存');
-                GStorage.setting.put(key, banWord);
-              },
-            ),
-          ],
-        ),
+          );
+        },
       );
     },
   );

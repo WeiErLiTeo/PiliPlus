@@ -5,6 +5,7 @@ import 'package:PiliPlus/models_new/member/search_archive/data.dart';
 import 'package:PiliPlus/models_new/member/search_archive/slist.dart';
 import 'package:PiliPlus/models_new/member/search_archive/vlist.dart';
 import 'package:PiliPlus/pages/member_video_web/base/controller.dart';
+import 'package:PiliPlus/utils/member_archive_filter.dart';
 import 'package:get/get.dart';
 
 class MemberVideoWebCtr
@@ -24,6 +25,10 @@ class MemberVideoWebCtr
 
   @override
   List<VListItemModel>? getDataList(SearchArchiveData response) {
+    if (MemberArchiveFilter.enableFilter) {
+      response.list?.vlist
+          ?.removeWhere((item) => MemberArchiveFilter.filterTitle(item.title));
+    }
     return response.list?.vlist;
   }
 
