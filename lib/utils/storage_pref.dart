@@ -286,17 +286,61 @@ abstract final class Pref {
   static String get banWordForRecommend =>
       _setting.get(SettingBoxKey.banWordForRecommend, defaultValue: '');
 
+  static bool get enableBanWordForRecommend =>
+      _setting.get(SettingBoxKey.enableBanWordForRecommend, defaultValue: true);
+
+  static bool get enableMinLikeRatioForRecommend =>
+      _setting.get(SettingBoxKey.enableMinLikeRatioForRecommend, defaultValue: true);
+
+  static bool get enableMinDurationForRcmd =>
+      _setting.get(SettingBoxKey.enableMinDurationForRcmd, defaultValue: true);
+
+  static bool get enableMinPlayForRcmd =>
+      _setting.get(SettingBoxKey.enableMinPlayForRcmd, defaultValue: true);
+
   static String get banWordForReply =>
       _setting.get(SettingBoxKey.banWordForReply, defaultValue: '');
+
+  static CommentIpFilterMode get commentWordFilterMode =>
+      CommentIpFilterMode.values.elementAtOrNull(
+        _setting.get(
+          SettingBoxKey.commentWordFilterMode,
+          defaultValue: 0,
+        ),
+      ) ??
+      CommentIpFilterMode.targetOnly;
+
+  static Set<int> get targetUpMidsForWordFilter {
+    final list = _setting.get(
+      SettingBoxKey.targetUpMidsForWordFilter,
+      defaultValue: <dynamic>[],
+    );
+    if (list is List) {
+      return list.map((e) => (e as num).toInt()).toSet();
+    }
+    return <int>{};
+  }
+
+  static set targetUpMidsForWordFilter(Set<int> mids) =>
+      _setting.put(SettingBoxKey.targetUpMidsForWordFilter, mids.toList());
 
   static String get banWordForSearch =>
       _setting.get(SettingBoxKey.banWordForSearch, defaultValue: '');
 
+  static bool get enableBanWordForSearch =>
+      _setting.get(SettingBoxKey.enableBanWordForSearch, defaultValue: true);
+
   static String get banWordForMemberArchive =>
       _setting.get(SettingBoxKey.banWordForMemberArchive, defaultValue: '');
 
+  static bool get enableBanWordForMemberArchive =>
+      _setting.get(SettingBoxKey.enableBanWordForMemberArchive, defaultValue: true);
+
   static String get banIpForReply =>
       _setting.get(SettingBoxKey.banIpForReply, defaultValue: '');
+
+  static bool get enableBanIpForReply =>
+      _setting.get(SettingBoxKey.enableBanIpForReply, defaultValue: true);
 
   static CommentIpFilterMode get commentIpFilterMode =>
       CommentIpFilterMode.values.elementAtOrNull(
@@ -323,6 +367,9 @@ abstract final class Pref {
 
   static String get banWordForZone =>
       _setting.get(SettingBoxKey.banWordForZone, defaultValue: '');
+
+  static bool get enableBanWordForZone =>
+      _setting.get(SettingBoxKey.enableBanWordForZone, defaultValue: true);
 
   static bool get appRcmd =>
       _setting.get(SettingBoxKey.appRcmd, defaultValue: true);

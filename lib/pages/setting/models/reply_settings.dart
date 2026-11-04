@@ -2,8 +2,10 @@ import 'dart:io' show Platform;
 
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
 import 'package:PiliPlus/grpc/reply.dart';
+import 'package:PiliPlus/models/common/reply/comment_ip_filter_mode.dart';
 import 'package:PiliPlus/models/common/reply/reply_sort_type.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
+import 'package:PiliPlus/pages/setting/widgets/select_target_up_dialog.dart';
 import 'package:PiliPlus/pages/video/reply/widgets/reply_item_grpc.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
@@ -94,6 +96,32 @@ List<SettingsModel> get replySettings => [
       ReplyGrpc.replyRegExp = value;
       ReplyGrpc.enableFilter = value.pattern.isNotEmpty;
     },
+  ),
+  PopupModel<CommentIpFilterMode>(
+    title: '评论过滤-博主特定模式',
+    leading: const Icon(Icons.tune_outlined),
+    value: () => Pref.commentWordFilterMode,
+    items: CommentIpFilterMode.values,
+    onSelected: (value, setState) {
+      GStorage.setting.put(SettingBoxKey.commentWordFilterMode, value.index);
+      ReplyGrpc.commentWordFilterMode = value;
+      setState();
+    },
+  ),
+  NormalModel(
+    title: '评论过滤-选择生效博主',
+    leading: const Icon(Icons.people_outline),
+    getSubtitle: () =>
+        '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForWordFilter.length} 位博主',
+    onTap: (context, setState) => SelectTargetUpDialog.show(
+      context,
+      title: '评论过滤-选择生效博主',
+      initialMids: Pref.targetUpMidsForWordFilter,
+      onSaveMids: (mids) {
+        Pref.targetUpMidsForWordFilter = mids;
+        ReplyGrpc.targetUpMidsForWord = mids;
+      },
+    ).whenComplete(setState),
   ),
   SwitchModel(
     title: '评论区搜索关键词',

@@ -197,6 +197,7 @@ class SearchVideoItemModel extends HorizontalVideoModel {
     arcurl = json['arcurl'];
     aid = json['aid'];
     bvid = json['bvid'];
+    tag = json['tag'];
     titleList = Em.regTitle(json['title']);
     title = titleList!.map((i) => i.text).join();
     desc = json['description'];

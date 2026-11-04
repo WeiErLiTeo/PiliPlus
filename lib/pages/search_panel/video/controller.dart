@@ -77,7 +77,7 @@ class SearchVideoController
   @override
   List<SearchVideoItemModel>? getDataList(SearchVideoData response) {
     if (SearchFilter.enableFilter) {
-      response.list?.removeWhere((item) => SearchFilter.filterTitle(item.title));
+      response.list?.removeWhere((item) => SearchFilter.filterItem(item));
     }
     return response.list;
   }

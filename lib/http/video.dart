@@ -45,8 +45,10 @@ import 'package:protobuf/protobuf.dart';
 
 /// view层根据 status 判断渲染逻辑
 abstract final class VideoHttp {
+  static bool enableBanWordForZone = Pref.enableBanWordForZone;
   static RegExp zoneRegExp = RegExp(Pref.banWordForZone, caseSensitive: false);
-  static bool enableFilter = zoneRegExp.pattern.isNotEmpty;
+  static bool enableFilter =
+      enableBanWordForZone && zoneRegExp.pattern.isNotEmpty;
 
   // 首页推荐视频
   static Future<LoadingState<List<RcmdVideoItemModel>>> rcmdVideoList({

@@ -18,11 +18,15 @@ abstract final class ReplyGrpc {
     caseSensitive: false,
   );
   static bool enableFilter = replyRegExp.pattern.isNotEmpty;
+  static CommentIpFilterMode commentWordFilterMode = Pref.commentWordFilterMode;
+  static Set<int> targetUpMidsForWord = Pref.targetUpMidsForWordFilter;
+  static bool enableBanIpForReply = Pref.enableBanIpForReply;
   static RegExp replyIpRegExp = RegExp(
     Pref.banIpForReply,
     caseSensitive: false,
   );
-  static bool enableIpFilter = replyIpRegExp.pattern.isNotEmpty;
+  static bool enableIpFilter =
+      enableBanIpForReply && replyIpRegExp.pattern.isNotEmpty;
   static CommentIpFilterMode commentIpFilterMode = Pref.commentIpFilterMode;
   static Set<int> targetUpMids = Pref.targetUpMidsForIpFilter;
 
@@ -104,6 +108,18 @@ abstract final class ReplyGrpc {
         reply.content.atNameToMid.length >= blockReplyAtCount!;
   }
 
+  static bool shouldFilterWordForUp(int? upMid) {
+    if (!enableFilter) return false;
+    final isTarget = upMid != null && targetUpMidsForWord.contains(upMid);
+    if (commentWordFilterMode == CommentIpFilterMode.targetOnly) {
+      // 模式 A：仅对我选中的博主视频开启过滤
+      return isTarget;
+    } else {
+      // 模式 B：全站过滤，但我选中的博主豁免
+      return !isTarget;
+    }
+  }
+
   static bool shouldFilterIpForUp(int? upMid) {
     if (!enableIpFilter) return false;
     final isTarget = upMid != null && targetUpMids.contains(upMid);
@@ -120,8 +136,11 @@ abstract final class ReplyGrpc {
     if (GlobalData().blackMids.contains(reply.mid.toInt()) ||
         _blockReplyAtCount(reply) ||
         _blockAtOnlyReply(reply) ||
-        (antiGoodsReply && _needRemoveGoodGrpc(reply)) ||
-        (enableFilter && replyRegExp.hasMatch(reply.content.message))) {
+        (antiGoodsReply && _needRemoveGoodGrpc(reply))) {
+      return true;
+    }
+    if (shouldFilterWordForUp(upMid) &&
+        replyRegExp.hasMatch(reply.content.message)) {
       return true;
     }
     if (shouldFilterIpForUp(upMid) && reply.replyControl.hasLocation()) {

@@ -79,7 +79,7 @@ List<SettingsModel> get recommendSettings => [
       SearchFilter.searchRegExp = value;
       SearchFilter.enableFilter = value.pattern.isNotEmpty;
     },
-    banScope: '搜索结果列表',
+    banScope: '搜索结果列表（标题与标签）',
   ),
   getBanWordModel(
     title: 'UP主主页视频过滤',
@@ -131,6 +131,41 @@ List<SettingsModel> get recommendSettings => [
     onChanged: (value) => RecommendFilter.applyFilterToRelatedVideos = value,
   ),
   getBanWordModel(
+    title: '评论区关键词过滤',
+    key: SettingBoxKey.banWordForReply,
+    banScope: '评论区',
+    onChanged: (value) {
+      ReplyGrpc.replyRegExp = value;
+      ReplyGrpc.enableFilter = value.pattern.isNotEmpty;
+    },
+  ),
+  PopupModel<CommentIpFilterMode>(
+    title: '评论过滤-博主特定模式',
+    leading: const Icon(Icons.tune_outlined),
+    value: () => Pref.commentWordFilterMode,
+    items: CommentIpFilterMode.values,
+    onSelected: (value, setState) {
+      GStorage.setting.put(SettingBoxKey.commentWordFilterMode, value.index);
+      ReplyGrpc.commentWordFilterMode = value;
+      setState();
+    },
+  ),
+  NormalModel(
+    title: '评论过滤-选择生效博主',
+    leading: const Icon(Icons.people_outline),
+    getSubtitle: () =>
+        '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForWordFilter.length} 位博主',
+    onTap: (context, setState) => SelectTargetUpDialog.show(
+      context,
+      title: '评论过滤-选择生效博主',
+      initialMids: Pref.targetUpMidsForWordFilter,
+      onSaveMids: (mids) {
+        Pref.targetUpMidsForWordFilter = mids;
+        ReplyGrpc.targetUpMidsForWord = mids;
+      },
+    ).whenComplete(setState),
+  ),
+  getBanWordModel(
     title: '评论区用户IP属地过滤',
     key: SettingBoxKey.banIpForReply,
     banScope: '评论区',
@@ -140,7 +175,7 @@ List<SettingsModel> get recommendSettings => [
     },
   ),
   PopupModel<CommentIpFilterMode>(
-    title: '博主特定过滤模式',
+    title: 'IP过滤-博主特定模式',
     leading: const Icon(Icons.tune_outlined),
     value: () => Pref.commentIpFilterMode,
     items: CommentIpFilterMode.values,
@@ -151,11 +186,18 @@ List<SettingsModel> get recommendSettings => [
     },
   ),
   NormalModel(
-    title: '选择生效博主',
+    title: 'IP过滤-选择生效博主',
     leading: const Icon(Icons.people_outline),
     getSubtitle: () =>
         '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForIpFilter.length} 位博主',
-    onTap: (context, setState) =>
-        SelectTargetUpDialog.show(context).whenComplete(setState),
+    onTap: (context, setState) => SelectTargetUpDialog.show(
+      context,
+      title: 'IP过滤-选择生效博主',
+      initialMids: Pref.targetUpMidsForIpFilter,
+      onSaveMids: (mids) {
+        Pref.targetUpMidsForIpFilter = mids;
+        ReplyGrpc.targetUpMids = mids;
+      },
+    ).whenComplete(setState),
   ),
 ];

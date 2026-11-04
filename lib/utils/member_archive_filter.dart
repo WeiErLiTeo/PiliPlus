@@ -5,7 +5,10 @@ abstract final class MemberArchiveFilter {
     Pref.banWordForMemberArchive,
     caseSensitive: false,
   );
-  static bool enableFilter = memberArchiveRegExp.pattern.isNotEmpty;
+  static bool enableBanWordForMemberArchive =
+      Pref.enableBanWordForMemberArchive;
+  static bool enableFilter =
+      enableBanWordForMemberArchive && memberArchiveRegExp.pattern.isNotEmpty;
 
   static bool filterTitle(String? title) {
     if (title == null || title.isEmpty || !enableFilter) {

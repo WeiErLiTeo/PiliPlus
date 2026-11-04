@@ -291,6 +291,32 @@ SettingsModel getBanWordModel({
                         },
                       ),
                       ActionChip(
+                        avatar: const Icon(Icons.add, size: 16),
+                        label: const Text('插入 |', style: TextStyle(fontSize: 12)),
+                        onPressed: () {
+                          final text = textController.text;
+                          final selection = textController.selection;
+                          if (selection.isValid && selection.start >= 0) {
+                            final newText = text.replaceRange(
+                              selection.start,
+                              selection.end,
+                              '|',
+                            );
+                            textController.value = TextEditingValue(
+                              text: newText,
+                              selection: TextSelection.collapsed(
+                                offset: selection.start + 1,
+                              ),
+                            );
+                          } else {
+                            textController.text = '$text|';
+                            textController.selection = TextSelection.collapsed(
+                              offset: textController.text.length,
+                            );
+                          }
+                        },
+                      ),
+                      ActionChip(
                         avatar: const Icon(Icons.copy_outlined, size: 16),
                         label: const Text('复制', style: TextStyle(fontSize: 12)),
                         onPressed: () {

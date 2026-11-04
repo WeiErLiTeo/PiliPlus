@@ -12,16 +12,34 @@ import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
 
 class SelectTargetUpDialog extends StatefulWidget {
-  const SelectTargetUpDialog({super.key});
+  final Set<int>? initialMids;
+  final ValueChanged<Set<int>>? onSaveMids;
+  final String title;
 
-  static Future<void> show(BuildContext context) {
+  const SelectTargetUpDialog({
+    super.key,
+    this.initialMids,
+    this.onSaveMids,
+    this.title = '选择特定关注博主',
+  });
+
+  static Future<void> show(
+    BuildContext context, {
+    Set<int>? initialMids,
+    ValueChanged<Set<int>>? onSaveMids,
+    String title = '选择特定关注博主',
+  }) {
     if (!Accounts.main.isLogin) {
       SmartDialog.showToast('请先登录B站账号再选择关注博主');
       return Future.value();
     }
     return showDialog(
       context: context,
-      builder: (context) => const SelectTargetUpDialog(),
+      builder: (context) => SelectTargetUpDialog(
+        initialMids: initialMids,
+        onSaveMids: onSaveMids,
+        title: title,
+      ),
     );
   }
 
@@ -39,7 +57,7 @@ class _SelectTargetUpDialogState extends State<SelectTargetUpDialog> {
   @override
   void initState() {
     super.initState();
-    _selectedMids.addAll(Pref.targetUpMidsForIpFilter);
+    _selectedMids.addAll(widget.initialMids ?? Pref.targetUpMidsForIpFilter);
     _loadFollowings();
   }
 
@@ -86,8 +104,12 @@ class _SelectTargetUpDialogState extends State<SelectTargetUpDialog> {
   }
 
   void _onSave() {
-    Pref.targetUpMidsForIpFilter = _selectedMids;
-    ReplyGrpc.targetUpMids = Set<int>.from(_selectedMids);
+    if (widget.onSaveMids != null) {
+      widget.onSaveMids!(Set<int>.from(_selectedMids));
+    } else {
+      Pref.targetUpMidsForIpFilter = _selectedMids;
+      ReplyGrpc.targetUpMids = Set<int>.from(_selectedMids);
+    }
     Get.back();
     SmartDialog.showToast('已保存 ${_selectedMids.length} 位生效博主');
   }
@@ -104,7 +126,12 @@ class _SelectTargetUpDialogState extends State<SelectTargetUpDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('选择特定关注博主'),
+              Flexible(
+                child: Text(
+                  widget.title,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               Text(
                 '已选 ${_selectedMids.length}',
                 style: TextStyle(
