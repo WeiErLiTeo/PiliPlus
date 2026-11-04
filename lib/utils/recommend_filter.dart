@@ -3,15 +3,21 @@ import 'package:PiliPlus/utils/storage_pref.dart';
 
 abstract final class RecommendFilter {
   static int minDurationForRcmd = Pref.minDurationForRcmd;
+  static bool enableMinDurationForRcmd = Pref.enableMinDurationForRcmd;
   static int minPlayForRcmd = Pref.minPlayForRcmd;
+  static bool enableMinPlayForRcmd = Pref.enableMinPlayForRcmd;
   static int minLikeRatioForRecommend = Pref.minLikeRatioForRecommend;
+  static bool enableMinLikeRatioForRecommend =
+      Pref.enableMinLikeRatioForRecommend;
   static bool exemptFilterForFollowed = Pref.exemptFilterForFollowed;
   static bool applyFilterToRelatedVideos = Pref.applyFilterToRelatedVideos;
+  static bool enableBanWordForRecommend = Pref.enableBanWordForRecommend;
   static RegExp rcmdRegExp = RegExp(
     Pref.banWordForRecommend,
     caseSensitive: false,
   );
-  static bool enableFilter = rcmdRegExp.pattern.isNotEmpty;
+  static bool enableFilter =
+      enableBanWordForRecommend && rcmdRegExp.pattern.isNotEmpty;
 
   // (web/app)rcmd
   static bool filterWithExempt(BaseVideoItemModel videoItem) {
@@ -25,22 +31,31 @@ abstract final class RecommendFilter {
   /// hot/rank/[filterAll]
   static bool filterLikeRatio(int? like, int? view) {
     if (view != null) {
-      return (view > -1 && view < minPlayForRcmd) ||
-          (like != null &&
-              like > -1 &&
-              like * 100 < minLikeRatioForRecommend * view);
+      if (enableMinPlayForRcmd && view > -1 && view < minPlayForRcmd) {
+        return true;
+      }
+      if (enableMinLikeRatioForRecommend &&
+          like != null &&
+          like > -1 &&
+          like * 100 < minLikeRatioForRecommend * view) {
+        return true;
+      }
     }
     return false;
   }
 
   /// hot/rank/[filterAll]
   static bool filterTitle(String title) {
-    return (enableFilter && rcmdRegExp.hasMatch(title));
+    return (enableBanWordForRecommend &&
+        enableFilter &&
+        rcmdRegExp.hasMatch(title));
   }
 
   /// [filterAll]
   static bool filterDuration(int duration) {
-    return duration > 0 && duration < minDurationForRcmd;
+    return enableMinDurationForRcmd &&
+        duration > 0 &&
+        duration < minDurationForRcmd;
   }
 
   /// related/[filterWithExempt]

@@ -1,5 +1,6 @@
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
+import 'package:PiliPlus/utils/filter_lock_manager.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -59,6 +60,11 @@ class _SetSwitchItemState extends State<SetSwitchItem> {
   }
 
   Future<void> switchChange([bool? value]) async {
+    if ((widget.setKey == SettingBoxKey.exemptFilterForFollowed ||
+            widget.setKey == SettingBoxKey.applyFilterToRelatedVideos) &&
+        FilterLockManager.checkLockedAndToast()) {
+      return;
+    }
     val = value ?? !val;
 
     if (val && widget.setKey == SettingBoxKey.badCertificateCallback) {

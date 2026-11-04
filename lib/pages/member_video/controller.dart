@@ -104,8 +104,10 @@ class MemberVideoCtr
     Success<SpaceArchiveData> response,
   ) {
     final data = response.response;
-    if (MemberArchiveFilter.enableFilter) {
-      data.item?.removeWhere((item) => MemberArchiveFilter.filterTitle(item.title));
+    if (MemberArchiveFilter.shouldFilterForUp(mid)) {
+      data.item?.removeWhere(
+        (item) => MemberArchiveFilter.filterTitle(item.title, upMid: mid),
+      );
     }
     episodicButton = data.episodicButton;
     next = data.next;

@@ -301,6 +301,9 @@ abstract final class Pref {
   static String get banWordForReply =>
       _setting.get(SettingBoxKey.banWordForReply, defaultValue: '');
 
+  static bool get enableBanWordForReply =>
+      _setting.get(SettingBoxKey.enableBanWordForReply, defaultValue: true);
+
   static CommentIpFilterMode get commentWordFilterMode =>
       CommentIpFilterMode.values.elementAtOrNull(
         _setting.get(
@@ -335,6 +338,35 @@ abstract final class Pref {
 
   static bool get enableBanWordForMemberArchive =>
       _setting.get(SettingBoxKey.enableBanWordForMemberArchive, defaultValue: true);
+
+  static CommentIpFilterMode get memberArchiveFilterMode =>
+      CommentIpFilterMode.values.elementAtOrNull(
+        _setting.get(
+          SettingBoxKey.memberArchiveFilterMode,
+          defaultValue: 0,
+        ),
+      ) ??
+      CommentIpFilterMode.targetOnly;
+
+  static Set<int> get targetUpMidsForMemberArchiveFilter {
+    final list = _setting.get(
+      SettingBoxKey.targetUpMidsForMemberArchiveFilter,
+      defaultValue: <dynamic>[],
+    );
+    if (list is List) {
+      return list.map((e) => (e as num).toInt()).toSet();
+    }
+    return <int>{};
+  }
+
+  static set targetUpMidsForMemberArchiveFilter(Set<int> mids) =>
+      _setting.put(
+        SettingBoxKey.targetUpMidsForMemberArchiveFilter,
+        mids.toList(),
+      );
+
+  static bool get filterLockEnabled =>
+      _setting.get(SettingBoxKey.filterLockEnabled, defaultValue: false);
 
   static String get banIpForReply =>
       _setting.get(SettingBoxKey.banIpForReply, defaultValue: '');

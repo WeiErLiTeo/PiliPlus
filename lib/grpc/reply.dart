@@ -13,11 +13,13 @@ abstract final class ReplyGrpc {
   static bool antiGoodsReply = Pref.antiGoodsReply;
   static var blockAtOnlyReply = Pref.blockAtOnlyReply;
   static var blockReplyAtCount = Pref.blockReplyAtCount;
+  static bool enableBanWordForReply = Pref.enableBanWordForReply;
   static RegExp replyRegExp = RegExp(
     Pref.banWordForReply,
     caseSensitive: false,
   );
-  static bool enableFilter = replyRegExp.pattern.isNotEmpty;
+  static bool enableFilter =
+      enableBanWordForReply && replyRegExp.pattern.isNotEmpty;
   static CommentIpFilterMode commentWordFilterMode = Pref.commentWordFilterMode;
   static Set<int> targetUpMidsForWord = Pref.targetUpMidsForWordFilter;
   static bool enableBanIpForReply = Pref.enableBanIpForReply;

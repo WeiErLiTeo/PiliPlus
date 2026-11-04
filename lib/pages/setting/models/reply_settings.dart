@@ -7,6 +7,7 @@ import 'package:PiliPlus/models/common/reply/reply_sort_type.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_target_up_dialog.dart';
 import 'package:PiliPlus/pages/video/reply/widgets/reply_item_grpc.dart';
+import 'package:PiliPlus/utils/filter_lock_manager.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -94,7 +95,13 @@ List<SettingsModel> get replySettings => [
     key: SettingBoxKey.banWordForReply,
     onChanged: (value) {
       ReplyGrpc.replyRegExp = value;
-      ReplyGrpc.enableFilter = value.pattern.isNotEmpty;
+      ReplyGrpc.enableFilter =
+          ReplyGrpc.enableBanWordForReply && value.pattern.isNotEmpty;
+    },
+    enableKey: SettingBoxKey.enableBanWordForReply,
+    onEnableChanged: (val) {
+      ReplyGrpc.enableBanWordForReply = val;
+      ReplyGrpc.enableFilter = val && ReplyGrpc.replyRegExp.pattern.isNotEmpty;
     },
   ),
   PopupModel<CommentIpFilterMode>(
@@ -103,6 +110,7 @@ List<SettingsModel> get replySettings => [
     value: () => Pref.commentWordFilterMode,
     items: CommentIpFilterMode.values,
     onSelected: (value, setState) {
+      if (FilterLockManager.checkLockedAndToast()) return;
       GStorage.setting.put(SettingBoxKey.commentWordFilterMode, value.index);
       ReplyGrpc.commentWordFilterMode = value;
       setState();
@@ -113,15 +121,18 @@ List<SettingsModel> get replySettings => [
     leading: const Icon(Icons.people_outline),
     getSubtitle: () =>
         '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForWordFilter.length} 位博主',
-    onTap: (context, setState) => SelectTargetUpDialog.show(
-      context,
-      title: '评论过滤-选择生效博主',
-      initialMids: Pref.targetUpMidsForWordFilter,
-      onSaveMids: (mids) {
-        Pref.targetUpMidsForWordFilter = mids;
-        ReplyGrpc.targetUpMidsForWord = mids;
-      },
-    ).whenComplete(setState),
+    onTap: (context, setState) {
+      if (FilterLockManager.checkLockedAndToast()) return;
+      SelectTargetUpDialog.show(
+        context,
+        title: '评论过滤-选择生效博主',
+        initialMids: Pref.targetUpMidsForWordFilter,
+        onSaveMids: (mids) {
+          Pref.targetUpMidsForWordFilter = mids;
+          ReplyGrpc.targetUpMidsForWord = mids;
+        },
+      ).whenComplete(setState);
+    },
   ),
   SwitchModel(
     title: '评论区搜索关键词',

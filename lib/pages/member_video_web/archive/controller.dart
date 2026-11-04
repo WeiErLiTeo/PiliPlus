@@ -25,9 +25,10 @@ class MemberVideoWebCtr
 
   @override
   List<VListItemModel>? getDataList(SearchArchiveData response) {
-    if (MemberArchiveFilter.enableFilter) {
-      response.list?.vlist
-          ?.removeWhere((item) => MemberArchiveFilter.filterTitle(item.title));
+    if (MemberArchiveFilter.shouldFilterForUp(mid)) {
+      response.list?.vlist?.removeWhere(
+        (item) => MemberArchiveFilter.filterTitle(item.title, upMid: mid),
+      );
     }
     return response.list?.vlist;
   }

@@ -4,13 +4,16 @@ import 'package:PiliPlus/pages/setting/widgets/normal_item.dart';
 import 'package:PiliPlus/pages/setting/widgets/popup_item.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/switch_item.dart';
+import 'package:PiliPlus/utils/filter_lock_manager.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:flutter/services.dart'
     show FilteringTextInputFormatter, Clipboard, ClipboardData;
+import 'package:flutter/widgets.dart' show StatefulBuilder;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
-import 'package:material_ui/material_ui.dart' hide PopupMenuItemSelected;
+import 'package:material_ui/material_ui.dart'
+    hide PopupMenuItemSelected, StatefulBuilder;
 
 @immutable
 sealed class SettingsModel {
@@ -213,10 +216,22 @@ SettingsModel getBanWordModel({
   required String key,
   required ValueChanged<RegExp> onChanged,
   String? banScope,
+  String? enableKey,
+  ValueChanged<bool>? onEnableChanged,
+  int? lockNodeId,
 }) {
   String banWord = GStorage.setting.get(key, defaultValue: '');
   return NormalModel(
-    leading: const Icon(Icons.filter_alt_outlined),
+    leading: lockNodeId != null
+        ? GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onLongPressStart: (_) =>
+                FilterLockManager.onNodeLongPressStart(lockNodeId),
+            onLongPressEnd: (_) =>
+                FilterLockManager.onNodeLongPressEnd(lockNodeId),
+            child: const Icon(Icons.filter_alt_outlined),
+          )
+        : const Icon(Icons.filter_alt_outlined),
     title: title,
     getSubtitle: () {
       final subtitle = banWord.isEmpty ? "点击添加" : banWord;
@@ -225,7 +240,37 @@ SettingsModel getBanWordModel({
       }
       return subtitle;
     },
+    getTrailing: enableKey == null
+        ? null
+        : (theme) => StatefulBuilder(
+              builder: (context, setSwitchState) {
+                final isEnabled = GStorage.setting.get(
+                  enableKey,
+                  defaultValue: true,
+                );
+                return Transform.scale(
+                  scale: 0.8,
+                  alignment: Alignment.centerRight,
+                  child: Switch(
+                    value: isEnabled,
+                    onChanged: (val) {
+                      if (FilterLockManager.checkLockedAndToast()) return;
+                      GStorage.setting.put(enableKey, val);
+                      onEnableChanged?.call(val);
+                      setSwitchState(() {});
+                    },
+                  ),
+                );
+              },
+            ),
     onTap: (context, setState) {
+      if (FilterLockManager.isLocked) {
+        if (lockNodeId != null) {
+          FilterLockManager.onNodeTap(context, lockNodeId, setState);
+        }
+        FilterLockManager.checkLockedAndToast();
+        return;
+      }
       final textController = TextEditingController(text: banWord);
       showDialog(
         context: context,
@@ -385,12 +430,24 @@ SettingsModel getVideoFilterSelectModel({
   bool isFilter = true,
   String? filterScope,
   ValueChanged<int>? onChanged,
+  String? enableKey,
+  ValueChanged<bool>? onEnableChanged,
+  int? lockNodeId,
 }) {
   assert(!isFilter || onChanged != null);
   int value = GStorage.setting.get(key, defaultValue: defaultValue);
   return NormalModel(
     title: '$title${isFilter ? '过滤' : ''}',
-    leading: const Icon(Icons.timelapse_outlined),
+    leading: lockNodeId != null
+        ? GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onLongPressStart: (_) =>
+                FilterLockManager.onNodeLongPressStart(lockNodeId),
+            onLongPressEnd: (_) =>
+                FilterLockManager.onNodeLongPressEnd(lockNodeId),
+            child: const Icon(Icons.timelapse_outlined),
+          )
+        : const Icon(Icons.timelapse_outlined),
     subtitle: subtitle,
     getSubtitle: subtitle == null
         ? () {
@@ -404,7 +461,37 @@ SettingsModel getVideoFilterSelectModel({
             return '当前$title:「$value${suffix ?? ""}」';
           }
         : null,
+    getTrailing: enableKey == null
+        ? null
+        : (theme) => StatefulBuilder(
+              builder: (context, setSwitchState) {
+                final isEnabled = GStorage.setting.get(
+                  enableKey,
+                  defaultValue: true,
+                );
+                return Transform.scale(
+                  scale: 0.8,
+                  alignment: Alignment.centerRight,
+                  child: Switch(
+                    value: isEnabled,
+                    onChanged: (val) {
+                      if (FilterLockManager.checkLockedAndToast()) return;
+                      GStorage.setting.put(enableKey, val);
+                      onEnableChanged?.call(val);
+                      setSwitchState(() {});
+                    },
+                  ),
+                );
+              },
+            ),
     onTap: (context, setState) async {
+      if (FilterLockManager.isLocked) {
+        if (lockNodeId != null) {
+          FilterLockManager.onNodeTap(context, lockNodeId, setState);
+        }
+        FilterLockManager.checkLockedAndToast();
+        return;
+      }
       var result = await showDialog<int>(
         context: context,
         builder: (context) => SelectDialog<int>(
