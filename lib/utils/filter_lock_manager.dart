@@ -15,23 +15,48 @@ abstract final class FilterLockManager {
   static int _stage = 0;
   static int _tapCounter = 0;
   static DateTime? _lastActionTime;
-  static DateTime? _longPressStart;
+  static DateTime? _justAdvancedAt;
+  static Timer? _holdTimer;
+  static Offset? _downPosition;
+  static bool _holdTriggered = false;
 
   static void _resetSequence() {
+    _holdTimer?.cancel();
+    _holdTimer = null;
     _stage = 0;
     _tapCounter = 0;
     _lastActionTime = null;
-    _longPressStart = null;
+    _justAdvancedAt = null;
+    _downPosition = null;
+    _holdTriggered = false;
   }
 
-  static bool _isExpired([int maxSeconds = 8]) {
+  static bool _isExpired([int maxSeconds = 25]) {
     if (_lastActionTime == null) return false;
     return DateTime.now().difference(_lastActionTime!).inSeconds > maxSeconds;
   }
 
+  static bool _isInGracePeriod() {
+    if (_justAdvancedAt == null) return false;
+    return DateTime.now().difference(_justAdvancedAt!).inMilliseconds < 2500;
+  }
+
+  static void _showStageToast(String msg) {
+    HapticFeedback.mediumImpact();
+    SmartDialog.showToast(
+      msg,
+      alignment: Alignment.bottomCenter,
+      displayType: SmartToastType.onlyRefresh,
+    );
+  }
+
   static bool checkLockedAndToast() {
     if (!isLocked) return false;
-    SmartDialog.showToast('当前处于上锁状态，无法关闭或修改过滤规则');
+    SmartDialog.showToast(
+      '当前处于上锁状态，无法关闭或修改过滤规则',
+      alignment: Alignment.bottomCenter,
+      displayType: SmartToastType.onlyRefresh,
+    );
     return true;
   }
 
@@ -40,7 +65,9 @@ abstract final class FilterLockManager {
     VoidCallback onRefresh,
   ) async {
     if (isLocked) {
-      onNodeTap(context, 1, onRefresh);
+      if (!onNodeTap(context, 1, onRefresh)) {
+        checkLockedAndToast();
+      }
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -67,16 +94,24 @@ abstract final class FilterLockManager {
       await GStorage.setting.put(SettingBoxKey.filterLockEnabled, true);
       _resetSequence();
       onRefresh();
-      SmartDialog.showToast('过滤设置已上锁');
+      SmartDialog.showToast(
+        '过滤设置已上锁',
+        alignment: Alignment.bottomCenter,
+      );
     }
   }
 
-  static void onNodeTap(
+  /// Returns true if this tap was handled by the unlock state machine (so caller shouldn't overwrite toast).
+  static bool onNodeTap(
     BuildContext context,
     int nodeId,
     VoidCallback onRefresh,
   ) {
-    if (!isLocked) return;
+    if (!isLocked) return false;
+    if (_holdTriggered) {
+      _holdTriggered = false;
+      return true;
+    }
     if (_isExpired()) {
       _resetSequence();
     }
@@ -88,75 +123,124 @@ abstract final class FilterLockManager {
         if (_tapCounter == 7) {
           _stage = 1;
           _tapCounter = 0;
-          HapticFeedback.lightImpact();
-        } else if (_tapCounter > 7) {
-          _resetSequence();
+          _justAdvancedAt = DateTime.now();
+          _showStageToast('阶段 1/5 已通过');
         }
+        return true;
       } else {
         _resetSequence();
+        return false;
       }
+    } else if (_stage == 1) {
+      if (nodeId == 1 && _isInGracePeriod()) {
+        _showStageToast('阶段 1/5 已通过');
+        return true;
+      }
+      if (nodeId == 2 && _isInGracePeriod()) {
+        return true;
+      }
+      _resetSequence();
+      return false;
     } else if (_stage == 2) {
+      if (nodeId == 2 && _isInGracePeriod()) {
+        return true;
+      }
       if (nodeId == 3) {
         _tapCounter++;
         if (_tapCounter == 5) {
           _stage = 3;
           _tapCounter = 0;
-          HapticFeedback.mediumImpact();
-        } else if (_tapCounter > 5) {
-          _resetSequence();
+          _justAdvancedAt = DateTime.now();
+          _showStageToast('阶段 3/5 已通过');
         }
+        return true;
       } else {
         _resetSequence();
+        return false;
       }
+    } else if (_stage == 3) {
+      if (nodeId == 3 && _isInGracePeriod()) {
+        _showStageToast('阶段 3/5 已通过');
+        return true;
+      }
+      if (nodeId == 4 && _isInGracePeriod()) {
+        return true;
+      }
+      _resetSequence();
+      return false;
     } else if (_stage == 4) {
+      if (nodeId == 4 && _isInGracePeriod()) {
+        return true;
+      }
       if (nodeId == 1) {
         _tapCounter++;
         if (_tapCounter == 3) {
           _resetSequence();
+          _showStageToast('阶段 5/5 已通过');
           _showTediousChallengeDialog(context, onRefresh);
         }
+        return true;
       } else {
         _resetSequence();
+        return false;
       }
-    } else {
-      _resetSequence();
     }
+    return false;
   }
 
-  static void onNodeLongPressStart(int nodeId) {
+  static void onNodeHoldStart(int nodeId, Offset position) {
     if (!isLocked) return;
     if (_isExpired()) {
       _resetSequence();
       return;
     }
-    _longPressStart = DateTime.now();
-  }
-
-  static void onNodeLongPressEnd(int nodeId) {
-    if (!isLocked || _longPressStart == null) return;
-    final elapsedMs = DateTime.now().difference(_longPressStart!).inMilliseconds;
-    _longPressStart = null;
-    _lastActionTime = DateTime.now();
+    _holdTimer?.cancel();
+    _downPosition = position;
+    _holdTriggered = false;
 
     if (_stage == 1 && nodeId == 2) {
-      if (elapsedMs >= 3500 && elapsedMs <= 6500) {
-        _stage = 2;
-        _tapCounter = 0;
-        HapticFeedback.heavyImpact();
-      } else {
-        _resetSequence();
-      }
+      _holdTimer = Timer(const Duration(milliseconds: 3500), () {
+        if (_stage == 1) {
+          _stage = 2;
+          _tapCounter = 0;
+          _lastActionTime = DateTime.now();
+          _justAdvancedAt = DateTime.now();
+          _holdTriggered = true;
+          _showStageToast('阶段 2/5 已通过，请松手');
+        }
+      });
     } else if (_stage == 3 && nodeId == 4) {
-      if (elapsedMs >= 4500 && elapsedMs <= 8000) {
-        _stage = 4;
-        _tapCounter = 0;
-        HapticFeedback.heavyImpact();
-      } else {
-        _resetSequence();
-      }
-    } else {
-      _resetSequence();
+      _holdTimer = Timer(const Duration(milliseconds: 4500), () {
+        if (_stage == 3) {
+          _stage = 4;
+          _tapCounter = 0;
+          _lastActionTime = DateTime.now();
+          _justAdvancedAt = DateTime.now();
+          _holdTriggered = true;
+          _showStageToast('阶段 4/5 已通过，请松手');
+        }
+      });
     }
+  }
+
+  static void onNodeHoldMove(int nodeId, Offset position) {
+    if (_downPosition != null &&
+        (position - _downPosition!).distance > 24.0) {
+      _holdTimer?.cancel();
+      _holdTimer = null;
+    }
+  }
+
+  static void onNodeHoldEnd(int nodeId) {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    _downPosition = null;
+  }
+
+  static void onNodeHoldCancel(int nodeId) {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    _downPosition = null;
   }
 
   static Future<void> _showTediousChallengeDialog(
@@ -222,12 +306,6 @@ abstract final class FilterLockManager {
                       isDense: true,
                       hintText: '请逐字输入上方文字',
                     ),
-                    onChanged: (val) {
-                      if ((val.length - targetPhrase.length).abs() == 0 &&
-                          val != targetPhrase) {
-                        // keep typing
-                      }
-                    },
                   ),
                 ],
               ),
@@ -244,7 +322,10 @@ abstract final class FilterLockManager {
                       ? null
                       : () async {
                           if (textController.text.trim() != targetPhrase) {
-                            SmartDialog.showToast('输入内容不匹配，进度已重置');
+                            SmartDialog.showToast(
+                              '输入内容不匹配，进度已重置',
+                              alignment: Alignment.bottomCenter,
+                            );
                             timer?.cancel();
                             Get.back();
                             return;
@@ -264,7 +345,10 @@ abstract final class FilterLockManager {
                             );
                             Get.back();
                             onRefresh();
-                            SmartDialog.showToast('已解除锁定');
+                            SmartDialog.showToast(
+                              '已解除锁定',
+                              alignment: Alignment.bottomCenter,
+                            );
                           }
                         },
                   child: Text(step < phrases.length - 1 ? '下一步' : '完成解锁'),

@@ -117,6 +117,7 @@ class NormalModel extends SettingsModel {
   final ValueGetter<String>? getSubtitle;
   final Widget Function(ThemeData theme)? getTrailing;
   final void Function(BuildContext context, VoidCallback setState)? onTap;
+  final int? lockNodeId;
 
   const NormalModel({
     super.subtitle,
@@ -128,6 +129,7 @@ class NormalModel extends SettingsModel {
     this.getSubtitle,
     this.getTrailing,
     this.onTap,
+    this.lockNodeId,
   }) : assert(title != null || getTitle != null);
 
   const NormalModel.split({
@@ -140,6 +142,7 @@ class NormalModel extends SettingsModel {
     this.getSubtitle,
     this.getTrailing,
   }) : onTap = null,
+       lockNodeId = null,
        assert(title != null || getTitle != null);
 
   @override
@@ -158,6 +161,7 @@ class NormalModel extends SettingsModel {
     onTap: onTap,
     contentPadding: contentPadding,
     titleStyle: titleStyle,
+    lockNodeId: lockNodeId,
   );
 }
 
@@ -222,16 +226,8 @@ SettingsModel getBanWordModel({
 }) {
   String banWord = GStorage.setting.get(key, defaultValue: '');
   return NormalModel(
-    leading: lockNodeId != null
-        ? GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onLongPressStart: (_) =>
-                FilterLockManager.onNodeLongPressStart(lockNodeId),
-            onLongPressEnd: (_) =>
-                FilterLockManager.onNodeLongPressEnd(lockNodeId),
-            child: const Icon(Icons.filter_alt_outlined),
-          )
-        : const Icon(Icons.filter_alt_outlined),
+    lockNodeId: lockNodeId,
+    leading: const Icon(Icons.filter_alt_outlined),
     title: title,
     getSubtitle: () {
       final subtitle = banWord.isEmpty ? "点击添加" : banWord;
@@ -265,8 +261,9 @@ SettingsModel getBanWordModel({
             ),
     onTap: (context, setState) {
       if (FilterLockManager.isLocked) {
-        if (lockNodeId != null) {
-          FilterLockManager.onNodeTap(context, lockNodeId, setState);
+        if (lockNodeId != null &&
+            FilterLockManager.onNodeTap(context, lockNodeId, setState)) {
+          return;
         }
         FilterLockManager.checkLockedAndToast();
         return;
@@ -437,17 +434,9 @@ SettingsModel getVideoFilterSelectModel({
   assert(!isFilter || onChanged != null);
   int value = GStorage.setting.get(key, defaultValue: defaultValue);
   return NormalModel(
+    lockNodeId: lockNodeId,
     title: '$title${isFilter ? '过滤' : ''}',
-    leading: lockNodeId != null
-        ? GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onLongPressStart: (_) =>
-                FilterLockManager.onNodeLongPressStart(lockNodeId),
-            onLongPressEnd: (_) =>
-                FilterLockManager.onNodeLongPressEnd(lockNodeId),
-            child: const Icon(Icons.timelapse_outlined),
-          )
-        : const Icon(Icons.timelapse_outlined),
+    leading: const Icon(Icons.timelapse_outlined),
     subtitle: subtitle,
     getSubtitle: subtitle == null
         ? () {
@@ -486,8 +475,9 @@ SettingsModel getVideoFilterSelectModel({
             ),
     onTap: (context, setState) async {
       if (FilterLockManager.isLocked) {
-        if (lockNodeId != null) {
-          FilterLockManager.onNodeTap(context, lockNodeId, setState);
+        if (lockNodeId != null &&
+            FilterLockManager.onNodeTap(context, lockNodeId, setState)) {
+          return;
         }
         FilterLockManager.checkLockedAndToast();
         return;

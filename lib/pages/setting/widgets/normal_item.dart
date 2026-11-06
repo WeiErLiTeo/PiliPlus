@@ -1,4 +1,5 @@
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
+import 'package:PiliPlus/utils/filter_lock_manager.dart';
 import 'package:material_ui/material_ui.dart' hide ListTile;
 
 class NormalItem extends StatefulWidget {
@@ -11,6 +12,7 @@ class NormalItem extends StatefulWidget {
   final void Function(BuildContext context, VoidCallback setState)? onTap;
   final EdgeInsetsGeometry? contentPadding;
   final TextStyle? titleStyle;
+  final int? lockNodeId;
 
   const NormalItem({
     this.title,
@@ -22,6 +24,7 @@ class NormalItem extends StatefulWidget {
     this.onTap,
     this.contentPadding,
     this.titleStyle,
+    this.lockNodeId,
     super.key,
   }) : assert(title != null || getTitle != null);
 
@@ -42,7 +45,7 @@ class _NormalItemState extends State<NormalItem> {
         ),
       );
     }
-    return ListTile(
+    Widget tile = ListTile(
       contentPadding: widget.contentPadding,
       onTap: widget.onTap == null
           ? null
@@ -55,6 +58,20 @@ class _NormalItemState extends State<NormalItem> {
       leading: widget.leading,
       trailing: widget.getTrailing?.call(theme),
     );
+    if (widget.lockNodeId != null) {
+      final nodeId = widget.lockNodeId!;
+      tile = Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (e) =>
+            FilterLockManager.onNodeHoldStart(nodeId, e.position),
+        onPointerMove: (e) =>
+            FilterLockManager.onNodeHoldMove(nodeId, e.position),
+        onPointerUp: (_) => FilterLockManager.onNodeHoldEnd(nodeId),
+        onPointerCancel: (_) => FilterLockManager.onNodeHoldCancel(nodeId),
+        child: tile,
+      );
+    }
+    return tile;
   }
 
   void refresh() {
