@@ -463,6 +463,52 @@ abstract final class Pref {
   static set subscribedBlockTxt(String txt) =>
       _localCache.put(LocalCacheKey.subscribedBlockTxt, txt);
 
+  static bool get enableFishAutoCapture =>
+      _setting.get(SettingBoxKey.enableFishAutoCapture, defaultValue: true);
+
+  static String get fishCapturedRawJson =>
+      _localCache.get(LocalCacheKey.fishCapturedMids, defaultValue: '');
+
+  static set fishCapturedRawJson(String raw) =>
+      _localCache.put(LocalCacheKey.fishCapturedMids, raw);
+
+  static String get fishGithubRepo =>
+      _setting.get(SettingBoxKey.fishGithubRepo, defaultValue: '');
+
+  static set fishGithubRepo(String val) =>
+      _setting.put(SettingBoxKey.fishGithubRepo, val);
+
+  static String get fishGithubBranch =>
+      _setting.get(SettingBoxKey.fishGithubBranch, defaultValue: 'main');
+
+  static set fishGithubBranch(String val) =>
+      _setting.put(SettingBoxKey.fishGithubBranch, val);
+
+  static String get fishGithubPath =>
+      _setting.get(SettingBoxKey.fishGithubPath, defaultValue: 'fish.txt');
+
+  static set fishGithubPath(String val) =>
+      _setting.put(SettingBoxKey.fishGithubPath, val);
+
+  static bool get fishGithubAutoUpload =>
+      _setting.get(SettingBoxKey.fishGithubAutoUpload, defaultValue: true);
+
+  static set fishGithubAutoUpload(bool val) =>
+      _setting.put(SettingBoxKey.fishGithubAutoUpload, val);
+
+  // Token 存在 localCache，不会被「导出全部设置」意外打包泄漏
+  static String get fishGithubToken =>
+      _localCache.get(LocalCacheKey.fishGithubToken, defaultValue: '');
+
+  static set fishGithubToken(String val) =>
+      _localCache.put(LocalCacheKey.fishGithubToken, val);
+
+  static Map<int, String> get fishPendingUploadMap =>
+      _decodeUidMap(LocalCacheKey.fishPendingUploadMids);
+
+  static set fishPendingUploadMap(Map<int, String> map) =>
+      _encodeUidMap(LocalCacheKey.fishPendingUploadMids, map);
+
   static String get banIpForReply =>
       _setting.get(SettingBoxKey.banIpForReply, defaultValue: '');
 

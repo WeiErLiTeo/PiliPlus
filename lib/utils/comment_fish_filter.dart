@@ -19,14 +19,78 @@ class FishSubscribeResult {
   });
 }
 
+class CapturedFishEntry {
+  final int uid;
+  final String name;
+  final int level;
+  final String reason;
+  final String snippet;
+  final int capturedAt;
+
+  const CapturedFishEntry({
+    required this.uid,
+    required this.name,
+    required this.level,
+    required this.reason,
+    required this.snippet,
+    required this.capturedAt,
+  });
+
+  String get displayNote {
+    final parts = <String>[];
+    if (name.isNotEmpty) parts.add(name);
+    if (level >= 0) parts.add('Lv$level');
+    if (reason.isNotEmpty) parts.add(reason);
+    return parts.join(' | ');
+  }
+
+  String toTxtLine() {
+    final parts = <String>[];
+    if (name.isNotEmpty) parts.add(name);
+    if (level >= 0) parts.add('Lv$level');
+    if (reason.isNotEmpty) parts.add(reason);
+    if (snippet.isNotEmpty) parts.add(snippet);
+    if (parts.isEmpty) return '$uid';
+    final cleanNote = parts.join(' | ').replaceAll(RegExp(r'[\r\n]+'), ' ');
+    return '$uid # $cleanNote';
+  }
+
+  Map<String, dynamic> toJson() => {
+    'uid': uid,
+    'name': name,
+    'level': level,
+    'reason': reason,
+    'snippet': snippet,
+    'capturedAt': capturedAt,
+  };
+
+  factory CapturedFishEntry.fromJson(Map<String, dynamic> json) =>
+      CapturedFishEntry(
+        uid: (json['uid'] as num).toInt(),
+        name: (json['name'] ?? '').toString(),
+        level: (json['level'] as num?)?.toInt() ?? -1,
+        reason: (json['reason'] ?? '').toString(),
+        snippet: (json['snippet'] ?? '').toString(),
+        capturedAt: (json['capturedAt'] as num?)?.toInt() ?? 0,
+      );
+}
+
 abstract final class CommentFishFilter {
+  // bilibili-blocker 实时服务端规则链接（比 GitHub 静态仓库更新更及时）
+  static const String presetAiShuzirenUrl =
+      'https://bilibili-blocker.guoyunhe.me/uploads/rules/aishuziren.txt';
+  static const String presetYingxiaoUrl =
+      'https://bilibili-blocker.guoyunhe.me/uploads/rules/yingxiaoyinliu.txt';
   static const String presetAiSlopUrl =
-      'https://raw.githubusercontent.com/guoyunhe/bilibili-blocker/main/rules/aislop.txt';
+      'https://bilibili-blocker.guoyunhe.me/uploads/rules/aislop.txt';
   static const String presetSpamUrl =
-      'https://raw.githubusercontent.com/guoyunhe/bilibili-blocker/main/rules/spam.txt';
+      'https://bilibili-blocker.guoyunhe.me/uploads/rules/spam.txt';
+
+  static const int _maxCapturedCount = 500;
 
   static bool enableFishFilter = Pref.enableCommentFishFilter;
   static FishFilterStrictness strictness = Pref.commentFishStrictness;
+  static bool enableAutoCapture = Pref.enableFishAutoCapture;
 
   static bool enableBanNameForReply = Pref.enableBanNameForReply;
   static RegExp replyNameRegExp = RegExp(
@@ -44,6 +108,8 @@ abstract final class CommentFishFilter {
 
   static Map<int, String> humanWhiteMap = Pref.humanWhiteMidsMap;
   static Set<int> humanWhiteMids = humanWhiteMap.keys.toSet();
+
+  static Map<int, CapturedFishEntry> capturedMap = _loadCapturedMap();
 
   static Set<int> subscribedBlockMids = Pref.subscribedBlockMids;
   static String subscribedRawTxt = Pref.subscribedBlockTxt;
@@ -104,6 +170,40 @@ abstract final class CommentFishFilter {
     multiLine: true,
   );
 
+  static Map<int, CapturedFishEntry> _loadCapturedMap() {
+    final raw = Pref.fishCapturedRawJson;
+    if (raw.isEmpty) return <int, CapturedFishEntry>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        final result = <int, CapturedFishEntry>{};
+        for (final item in decoded) {
+          if (item is Map) {
+            final entry = CapturedFishEntry.fromJson(
+              Map<String, dynamic>.from(item),
+            );
+            if (entry.uid > 0) result[entry.uid] = entry;
+          }
+        }
+        return result;
+      }
+    } catch (_) {}
+    return <int, CapturedFishEntry>{};
+  }
+
+  static void _saveCapturedMap() {
+    if (capturedMap.length > _maxCapturedCount) {
+      final sorted = capturedMap.values.toList()
+        ..sort((a, b) => b.capturedAt.compareTo(a.capturedAt));
+      capturedMap = {
+        for (final e in sorted.take(_maxCapturedCount)) e.uid: e,
+      };
+    }
+    Pref.fishCapturedRawJson = jsonEncode(
+      capturedMap.values.map((e) => e.toJson()).toList(),
+    );
+  }
+
   /// 统一 UID 屏蔽检查：评论区 + 首页推荐 + 热门 + 排行 + 相关视频 + 搜索 均生效
   /// 活人白名单优先级最高，不会被本地黑名单或远程订阅误伤
   static bool isMidBlocked(Object? mid) {
@@ -133,6 +233,7 @@ abstract final class CommentFishFilter {
     if (enableNameFilter &&
         name.isNotEmpty &&
         replyNameRegExp.hasMatch(name)) {
+      _recordCaptured(reply, '昵称命中', isNameOnly: true);
       return true;
     }
 
@@ -146,12 +247,59 @@ abstract final class CommentFishFilter {
 
     // 4. 多维启发式防鱼灾打分
     if (enableFishFilter) {
-      if (scoreReply(reply) >= strictness.threshold) {
+      final score = scoreReply(reply);
+      if (score >= strictness.threshold) {
+        _recordCaptured(reply, 'AI打分$score', isNameOnly: false);
         return true;
       }
     }
 
     return false;
+  }
+
+  /// 自动记录疑似鱼号进待审池（不直接永久拉黑，防止误杀）
+  static void _recordCaptured(
+    ReplyInfo reply,
+    String reason, {
+    required bool isNameOnly,
+  }) {
+    if (!enableAutoCapture) return;
+    final mid = reply.mid.toInt();
+    if (mid <= 0 ||
+        fishBlockMids.contains(mid) ||
+        humanWhiteMids.contains(mid) ||
+        subscribedBlockMids.contains(mid)) {
+      return;
+    }
+    final member = reply.member;
+    // 官方蓝/黄 V 认证账号不进自动捕获池
+    if (member.hasOfficialVerifyType() &&
+        member.officialVerifyType.toInt() >= 0) {
+      return;
+    }
+    final level = member.level.toInt();
+    // 仅命中昵称时，跳过 Lv6 或硬核会员，进一步降低误杀活人概率
+    if (isNameOnly && (level >= 6 || member.isSeniorMember == 1)) {
+      return;
+    }
+
+    final rawMsg = reply.content.message.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final snippet = rawMsg.length > 45 ? '${rawMsg.substring(0, 45)}…' : rawMsg;
+
+    final existing = capturedMap[mid];
+    if (existing != null && existing.reason == reason && existing.name == member.name) {
+      return;
+    }
+
+    capturedMap[mid] = CapturedFishEntry(
+      uid: mid,
+      name: member.name.trim(),
+      level: level,
+      reason: reason,
+      snippet: snippet,
+      capturedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    _saveCapturedMap();
   }
 
   /// 本地多维启发式打分（0~99），不检测头像颜色
@@ -232,16 +380,18 @@ abstract final class CommentFishFilter {
     return score.clamp(0, 99);
   }
 
-  // --- 本地黑白名单增删 ---
+  // --- 本地黑白名单与待审池操作 ---
 
   static void addFishMid(int mid, {String name = ''}) {
     if (mid <= 0) return;
     humanWhiteMap.remove(mid);
     humanWhiteMids.remove(mid);
+    capturedMap.remove(mid);
     fishBlockMap[mid] = name.trim();
     fishBlockMids.add(mid);
     Pref.humanWhiteMidsMap = humanWhiteMap;
     Pref.fishBlockMidsMap = fishBlockMap;
+    _saveCapturedMap();
   }
 
   static void removeFishMid(int mid) {
@@ -255,10 +405,12 @@ abstract final class CommentFishFilter {
     if (mid <= 0) return;
     fishBlockMap.remove(mid);
     fishBlockMids.remove(mid);
+    capturedMap.remove(mid);
     humanWhiteMap[mid] = name.trim();
     humanWhiteMids.add(mid);
     Pref.fishBlockMidsMap = fishBlockMap;
     Pref.humanWhiteMidsMap = humanWhiteMap;
+    _saveCapturedMap();
   }
 
   static void removeWhiteMid(int mid) {
@@ -266,6 +418,74 @@ abstract final class CommentFishFilter {
       humanWhiteMids.remove(mid);
       Pref.humanWhiteMidsMap = humanWhiteMap;
     }
+  }
+
+  static void removeCapturedMid(int mid) {
+    if (capturedMap.remove(mid) != null) {
+      _saveCapturedMap();
+    }
+  }
+
+  static void clearCaptured() {
+    capturedMap.clear();
+    _saveCapturedMap();
+  }
+
+  /// 将待审池中选中的 UID 转入正式本地黑名单，返回新增的 uid -> note 映射（供同步 GitHub 使用）
+  static Map<int, String> promoteCapturedToBlacklist(Iterable<int> mids) {
+    final promoted = <int, String>{};
+    for (final mid in mids) {
+      final entry = capturedMap.remove(mid);
+      if (entry == null) continue;
+      humanWhiteMap.remove(mid);
+      humanWhiteMids.remove(mid);
+      final note = entry.displayNote;
+      fishBlockMap[mid] = note;
+      fishBlockMids.add(mid);
+      promoted[mid] = note;
+    }
+    if (promoted.isNotEmpty) {
+      Pref.humanWhiteMidsMap = humanWhiteMap;
+      Pref.fishBlockMidsMap = fishBlockMap;
+      _saveCapturedMap();
+    }
+    return promoted;
+  }
+
+  static void moveCapturedToWhitelist(int mid) {
+    final entry = capturedMap.remove(mid);
+    final name = entry?.name ?? '';
+    addWhiteMid(mid, name: name);
+  }
+
+  static String exportCapturedToTxt() {
+    final buf = StringBuffer(
+      '# PiliPlus 自动捕获待审池（不直接永久屏蔽，请人工核对后转入正式黑名单）\n',
+    );
+    final list = capturedMap.values.toList()
+      ..sort((a, b) => b.capturedAt.compareTo(a.capturedAt));
+    for (final entry in list) {
+      buf.writeln(entry.toTxtLine());
+    }
+    return buf.toString();
+  }
+
+  static int replaceCapturedFromText(String raw) {
+    final parsed = parseUidText(raw);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    capturedMap = {
+      for (final e in parsed.entries)
+        e.key: CapturedFishEntry(
+          uid: e.key,
+          name: e.value,
+          level: -1,
+          reason: '手动编辑',
+          snippet: '',
+          capturedAt: now,
+        ),
+    };
+    _saveCapturedMap();
+    return capturedMap.length;
   }
 
   // --- TXT / JSON 解析与导出 ---
@@ -310,8 +530,10 @@ abstract final class CommentFishFilter {
       if (left.isEmpty) continue;
 
       // 支持 "123456 昵称" 或 "123456,昵称" 或 "UID:123456"
-      final match = RegExp(r'^(?:uid[:：\s]*)?(\d+)(?:[\s,，\t]+(.+))?$', caseSensitive: false)
-          .firstMatch(left);
+      final match = RegExp(
+        r'^(?:uid[:：\s]*)?(\d+)(?:[\s,，\t]+(.+))?$',
+        caseSensitive: false,
+      ).firstMatch(left);
       if (match != null) {
         final uid = int.tryParse(match.group(1)!);
         if (uid != null && uid > 0) {
@@ -347,27 +569,31 @@ abstract final class CommentFishFilter {
           visit(item);
         }
       } else if (node is Map) {
-        // 常见对象结构: {"uid": 123, "name": "xxx"} / {"mid": 123, "uname": "xxx"}
         final rawId = node['uid'] ?? node['mid'] ?? node['id'];
         if (rawId != null) {
           final uid = rawId is int ? rawId : int.tryParse(rawId.toString());
           if (uid != null && uid > 0) {
             final name =
-                (node['name'] ?? node['uname'] ?? node['note'] ?? node['reason'] ?? '')
+                (node['name'] ??
+                        node['uname'] ??
+                        node['note'] ??
+                        node['reason'] ??
+                        '')
                     .toString()
                     .trim();
             result[uid] = name;
             return;
           }
         }
-        // 常见键值结构或嵌套结构: {"12345": "备注"} / {"blacklist": [...]}
         node.forEach((k, v) {
           final keyUid = int.tryParse(k.toString());
           if (keyUid != null && keyUid > 0) {
             if (v is String) {
               result[keyUid] = v.trim();
             } else if (v is Map) {
-              final name = (v['name'] ?? v['uname'] ?? v['note'] ?? '').toString().trim();
+              final name = (v['name'] ?? v['uname'] ?? v['note'] ?? '')
+                  .toString()
+                  .trim();
               result[keyUid] = name;
             } else {
               result.putIfAbsent(keyUid, () => '');
@@ -427,7 +653,13 @@ abstract final class CommentFishFilter {
 
   static int mergeFishBlockFromText(String raw) {
     final parsed = parseUidText(raw);
-    fishBlockMap.addAll(parsed);
+    for (final e in parsed.entries) {
+      if (!humanWhiteMids.contains(e.key)) {
+        fishBlockMap[e.key] = e.value.isNotEmpty
+            ? e.value
+            : (fishBlockMap[e.key] ?? '');
+      }
+    }
     fishBlockMids = fishBlockMap.keys.toSet();
     Pref.fishBlockMidsMap = fishBlockMap;
     return parsed.length;

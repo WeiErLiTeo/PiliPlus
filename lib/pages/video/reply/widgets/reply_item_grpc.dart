@@ -43,6 +43,7 @@ import 'package:PiliPlus/utils/extension/selectable_region_ext.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
+import 'package:PiliPlus/utils/fish_github_sync.dart';
 import 'package:PiliPlus/utils/global_data.dart';
 import 'package:PiliPlus/utils/image_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
@@ -1448,16 +1449,26 @@ class ReplyItemGrpc extends StatelessWidget {
             onTap: () {
               Get.back();
               final mid = item.mid.toInt();
-              CommentFishFilter.addFishMid(mid, name: item.member.name);
+              final note = '${item.member.name} | Lv${item.member.level}';
+              CommentFishFilter.addFishMid(mid, name: note);
               onDelete?.call();
-              SmartDialog.showToast(
-                '已标记为鱼并本地屏蔽 ${item.member.name} ($mid)',
-              );
+              if (FishGithubSync.shouldAutoUpload) {
+                FishGithubSync.enqueueUpload(mid, note: note);
+                SmartDialog.showToast(
+                  '已本地屏蔽 ${item.member.name} ($mid)，后台上传 GitHub 中',
+                );
+              } else {
+                SmartDialog.showToast(
+                  '已标记为鱼并本地屏蔽 ${item.member.name} ($mid)',
+                );
+              }
             },
             minLeadingWidth: 0,
             leading: Icon(Icons.block_outlined, color: errorColor, size: 19),
             title: Text(
-              '标记为鱼（本地屏蔽该 UID）',
+              FishGithubSync.shouldAutoUpload
+                  ? '标记为鱼（本地屏蔽并上传 GitHub）'
+                  : '标记为鱼（本地屏蔽该 UID）',
               style: style.copyWith(color: errorColor),
             ),
           ),

@@ -4,9 +4,11 @@ import 'dart:typed_data' show Uint8List;
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/models/common/reply/fish_filter_strictness.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
+import 'package:PiliPlus/pages/setting/widgets/fish_github_sync_tab.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:PiliPlus/utils/comment_fish_filter.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
+import 'package:PiliPlus/utils/fish_github_sync.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_utils.dart';
@@ -70,7 +72,7 @@ List<SettingsModel> buildFishFilterSettings() => [
   getBanWordModel(
     title: '评论者昵称过滤',
     key: SettingBoxKey.banNameForReply,
-    banScope: '评论区昵称',
+    banScope: '评论区昵称（命中自动记入待审捕获池）',
     onChanged: (value) {
       CommentFishFilter.replyNameRegExp = value;
       CommentFishFilter.enableNameFilter =
@@ -137,13 +139,14 @@ List<SettingsModel> buildFishFilterSettings() => [
     },
   ),
   NormalModel(
-    title: '本地 UID 黑白名单与 .txt 订阅',
+    title: '本地 UID 黑白名单、待审池与云同步',
     leading: const Icon(Icons.playlist_remove_outlined),
     getSubtitle: () =>
-        '本地黑名单 ${CommentFishFilter.fishBlockMids.length} 人 · '
-        '活人白名单 ${CommentFishFilter.humanWhiteMids.length} 人 · '
-        '订阅 ${CommentFishFilter.subscribedBlockMids.length} 人\n'
-        '评论区与推荐/热门/搜索视频均生效，支持 .txt 在线编辑与导入导出',
+        '黑名单 ${CommentFishFilter.fishBlockMids.length} · '
+        '待审 ${CommentFishFilter.capturedMap.length} · '
+        '白名单 ${CommentFishFilter.humanWhiteMids.length} · '
+        '订阅 ${CommentFishFilter.subscribedBlockMids.length}\n'
+        '支持 .txt 编辑/导入导出、bilibili-blocker 实时订阅、GitHub 云同步',
     onTap: (context, setState) {
       FishBlocklistDialog.show(context).whenComplete(setState);
     },
@@ -167,13 +170,14 @@ class FishBlocklistDialog extends StatefulWidget {
 class _FishBlocklistDialogState extends State<FishBlocklistDialog>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  final Set<int> _selectedCaptured = <int>{};
   String _searchKeyword = '';
   bool _isFetching = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -453,7 +457,7 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
               controller: urlCtrl,
               autofocus: true,
               decoration: const InputDecoration(
-                labelText: '规则文件 URL（如 GitHub raw 链接）',
+                labelText: '规则文件 URL（支持实时服务端或 GitHub raw）',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -464,7 +468,23 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
               children: [
                 ActionChip(
                   label: const Text(
-                    '填入 bilibili-blocker aislop.txt',
+                    'aishuziren.txt (AI伪人)',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onPressed: () =>
+                      urlCtrl.text = CommentFishFilter.presetAiShuzirenUrl,
+                ),
+                ActionChip(
+                  label: const Text(
+                    'yingxiaoyinliu.txt (刷评水军)',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onPressed: () =>
+                      urlCtrl.text = CommentFishFilter.presetYingxiaoUrl,
+                ),
+                ActionChip(
+                  label: const Text(
+                    'aislop.txt (AI泔水视频)',
                     style: TextStyle(fontSize: 12),
                   ),
                   onPressed: () =>
@@ -472,7 +492,7 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
                 ),
                 ActionChip(
                   label: const Text(
-                    '填入 bilibili-blocker spam.txt',
+                    'spam.txt (垃圾内容)',
                     style: TextStyle(fontSize: 12),
                   ),
                   onPressed: () =>
@@ -528,6 +548,14 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
     } finally {
       if (mounted) setState(() => _isFetching = false);
     }
+  }
+
+  void _addPresetUrl(String url) {
+    CommentFishFilter.saveSubscribeUrls([
+      ...CommentFishFilter.subscribeUrls,
+      url,
+    ]);
+    setState(() {});
   }
 
   Widget _buildUidListTab({required bool isWhitelist}) {
@@ -618,7 +646,7 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
                   child: Text(
                     isWhitelist
                         ? '暂无白名单记录\n点上方「编辑 .txt」或「添加 UID」维护'
-                        : '暂无本地黑名单记录\n可长按评论「标记为鱼」，或点「编辑 .txt」批量维护',
+                        : '暂无本地黑名单记录\n可长按评论「标记为鱼」，或从「待审池」一键转正',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 13,
@@ -651,6 +679,217 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
                           }
                           setState(() {});
                         },
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCapturedTab() {
+    final theme = Theme.of(context);
+    final entries = CommentFishFilter.capturedMap.values.toList()
+      ..sort((a, b) => b.capturedAt.compareTo(a.capturedAt));
+    _selectedCaptured.removeWhere((id) => !CommentFishFilter.capturedMap.containsKey(id));
+    final allSelected =
+        entries.isNotEmpty && _selectedCaptured.length == entries.length;
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 6, 4, 2),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '命中昵称过滤/AI高分时自动记入此处，不直接永久拉黑，核对无误杀后可批量转正',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+              ),
+              Transform.scale(
+                scale: 0.78,
+                alignment: Alignment.centerRight,
+                child: Switch(
+                  value: CommentFishFilter.enableAutoCapture,
+                  onChanged: (val) {
+                    GStorage.setting.put(
+                      SettingBoxKey.enableFishAutoCapture,
+                      val,
+                    );
+                    CommentFishFilter.enableAutoCapture = val;
+                    setState(() {});
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 2, 4, 6),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              if (entries.isNotEmpty)
+                ActionChip(
+                  avatar: Icon(
+                    allSelected ? Icons.deselect : Icons.select_all,
+                    size: 16,
+                  ),
+                  label: Text(
+                    allSelected ? '取消全选' : '全选',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      if (allSelected) {
+                        _selectedCaptured.clear();
+                      } else {
+                        _selectedCaptured
+                          ..clear()
+                          ..addAll(entries.map((e) => e.uid));
+                      }
+                    });
+                  },
+                ),
+              if (_selectedCaptured.isNotEmpty)
+                ActionChip(
+                  avatar: const Icon(Icons.check_circle_outline, size: 16),
+                  label: Text(
+                    FishGithubSync.shouldAutoUpload
+                        ? '转黑名单并上传(${_selectedCaptured.length})'
+                        : '转入黑名单(${_selectedCaptured.length})',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  onPressed: () {
+                    final promoted = CommentFishFilter.promoteCapturedToBlacklist(
+                      _selectedCaptured.toList(),
+                    );
+                    _selectedCaptured.clear();
+                    setState(() {});
+                    if (promoted.isNotEmpty) {
+                      if (FishGithubSync.shouldAutoUpload) {
+                        FishGithubSync.enqueueBatchUpload(promoted);
+                        SmartDialog.showToast(
+                          '已转入正式黑名单 ${promoted.length} 条，后台上传 GitHub 中',
+                        );
+                      } else {
+                        SmartDialog.showToast(
+                          '已转入正式黑名单 ${promoted.length} 条',
+                        );
+                      }
+                    }
+                  },
+                ),
+              ActionChip(
+                avatar: const Icon(Icons.edit_note_outlined, size: 16),
+                label: const Text('编辑 .txt', style: TextStyle(fontSize: 12)),
+                onPressed: () => _openTxtEditor(
+                  title: '编辑待审捕获池 (.txt)',
+                  initialText: CommentFishFilter.exportCapturedToTxt(),
+                  exportPrefix: 'fish_captured',
+                  onSave: CommentFishFilter.replaceCapturedFromText,
+                ),
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.file_download_outlined, size: 16),
+                label: const Text('导出 .txt', style: TextStyle(fontSize: 12)),
+                onPressed: () => _exportTxtFile(
+                  prefix: 'fish_captured',
+                  content: CommentFishFilter.exportCapturedToTxt(),
+                ),
+              ),
+              if (entries.isNotEmpty)
+                ActionChip(
+                  avatar: const Icon(Icons.delete_outline, size: 16),
+                  label: const Text('清空', style: TextStyle(fontSize: 12)),
+                  onPressed: () {
+                    CommentFishFilter.clearCaptured();
+                    _selectedCaptured.clear();
+                    setState(() {});
+                  },
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: entries.isEmpty
+              ? Center(
+                  child: Text(
+                    '暂无待审记录\n刷评论区触发昵称过滤或 AI 打分后会自动带证据出现在这里',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    final item = entries[index];
+                    final checked = _selectedCaptured.contains(item.uid);
+                    return ListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 2),
+                      leading: Checkbox(
+                        value: checked,
+                        visualDensity: VisualDensity.compact,
+                        onChanged: (v) {
+                          setState(() {
+                            if (v == true) {
+                              _selectedCaptured.add(item.uid);
+                            } else {
+                              _selectedCaptured.remove(item.uid);
+                            }
+                          });
+                        },
+                      ),
+                      title: Text(
+                        '${item.name.isNotEmpty ? item.name : "UID:${item.uid}"} '
+                        '${item.level >= 0 ? "Lv${item.level} " : ""}'
+                        '· ${item.reason}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      subtitle: Text(
+                        'UID: ${item.uid}'
+                        '${item.snippet.isNotEmpty ? "\n${item.snippet}" : ""}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.outline,
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.verified_user_outlined, size: 18),
+                            tooltip: '是活人，移入白名单',
+                            onPressed: () {
+                              CommentFishFilter.moveCapturedToWhitelist(item.uid);
+                              _selectedCaptured.remove(item.uid);
+                              setState(() {});
+                              SmartDialog.showToast('已加入活人白名单，永不再误抓');
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            tooltip: '忽略移除',
+                            onPressed: () {
+                              CommentFishFilter.removeCapturedMid(item.uid);
+                              _selectedCaptured.remove(item.uid);
+                              setState(() {});
+                            },
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -746,46 +985,48 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
         Expanded(
           child: urls.isEmpty
               ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '尚未添加远程订阅链接\n可一键添加社区众包规则（bilibili-blocker）：',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: theme.colorScheme.outline,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '尚未添加远程订阅链接\n可一键添加 bilibili-blocker 实时规则：',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: theme.colorScheme.outline,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
-                        alignment: WrapAlignment.center,
-                        children: [
-                          OutlinedButton(
-                            onPressed: () {
-                              CommentFishFilter.saveSubscribeUrls([
-                                ...CommentFishFilter.subscribeUrls,
-                                CommentFishFilter.presetAiSlopUrl,
-                              ]);
-                              setState(() {});
-                            },
-                            child: const Text('+ aislop.txt (AI内容号)'),
-                          ),
-                          OutlinedButton(
-                            onPressed: () {
-                              CommentFishFilter.saveSubscribeUrls([
-                                ...CommentFishFilter.subscribeUrls,
-                                CommentFishFilter.presetSpamUrl,
-                              ]);
-                              setState(() {});
-                            },
-                            child: const Text('+ spam.txt (刷屏号)'),
-                          ),
-                        ],
-                      ),
-                    ],
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          alignment: WrapAlignment.center,
+                          children: [
+                            OutlinedButton(
+                              onPressed: () =>
+                                  _addPresetUrl(CommentFishFilter.presetAiShuzirenUrl),
+                              child: const Text('+ aishuziren.txt (AI伪人/托管)'),
+                            ),
+                            OutlinedButton(
+                              onPressed: () =>
+                                  _addPresetUrl(CommentFishFilter.presetYingxiaoUrl),
+                              child: const Text('+ yingxiaoyinliu.txt (刷评水军)'),
+                            ),
+                            OutlinedButton(
+                              onPressed: () =>
+                                  _addPresetUrl(CommentFishFilter.presetAiSlopUrl),
+                              child: const Text('+ aislop.txt (AI泔水视频)'),
+                            ),
+                            OutlinedButton(
+                              onPressed: () =>
+                                  _addPresetUrl(CommentFishFilter.presetSpamUrl),
+                              child: const Text('+ spam.txt (垃圾内容)'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 )
               : ListView.builder(
@@ -825,19 +1066,22 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
       constraints: Style.dialogFixedConstraints,
       titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       contentPadding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      title: const Text('本地 UID 黑白名单与 .txt 订阅'),
+      title: const Text('本地 UID 名单与云同步'),
       content: SizedBox(
         width: double.maxFinite,
-        height: (screenHeight * 0.62).clamp(320.0, 540.0),
+        height: (screenHeight * 0.64).clamp(340.0, 560.0),
         child: Column(
           children: [
             TabBar(
               controller: _tabController,
-              isScrollable: false,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
               tabs: [
                 Tab(text: '黑名单(${CommentFishFilter.fishBlockMids.length})'),
+                Tab(text: '待审(${CommentFishFilter.capturedMap.length})'),
                 Tab(text: '白名单(${CommentFishFilter.humanWhiteMids.length})'),
                 Tab(text: '订阅(${CommentFishFilter.subscribedBlockMids.length})'),
+                const Tab(text: 'GitHub同步'),
               ],
             ),
             Expanded(
@@ -845,8 +1089,14 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
                 controller: _tabController,
                 children: [
                   _buildUidListTab(isWhitelist: false),
+                  _buildCapturedTab(),
                   _buildUidListTab(isWhitelist: true),
                   _buildSubscribeTab(),
+                  FishGithubSyncTab(
+                    onDataChanged: () {
+                      if (mounted) setState(() {});
+                    },
+                  ),
                 ],
               ),
             ),
