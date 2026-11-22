@@ -48,6 +48,7 @@ abstract final class SettingBoxKey {
       enableBackgroundPlay = 'enableBackgroundPlay',
       continuePlayInBackground = 'continuePlayInBackground',
       appRcmd = 'appRcmd',
+      rcmdSource = 'rcmdSource',
       enableSaveLastData = 'enableSaveLastData',
       minDurationForRcmd = 'minDurationForRcmd',
       minPlayForRcmd = 'minPlayForRcmd',
@@ -111,7 +112,13 @@ abstract final class SettingBoxKey {
       enableBanWordForMemberArchive = 'enableBanWordForMemberArchive',
       memberArchiveFilterMode = 'memberArchiveFilterMode',
       targetUpMidsForMemberArchiveFilter = 'targetUpMidsForMemberArchiveFilter',
-      filterLockEnabled = 'filterLockEnabled',
+      enableCommentFishFilter = 'enableCommentFishFilter',
+      commentFishStrictness = 'commentFishStrictness',
+      banNameForReply = 'banNameForReply',
+      enableBanNameForReply = 'enableBanNameForReply',
+      minLevelForReply = 'minLevelForReply',
+      enableMinLevelForReply = 'enableMinLevelForReply',
+      fishSubscribeUrls = 'fishSubscribeUrls',
       savedRcmdTip = 'savedRcmdTip',
       openInBrowser = 'openInBrowser',
       refreshDisplacement = 'refreshDisplacement',
@@ -168,6 +175,7 @@ abstract final class SettingBoxKey {
       enableTapDm = 'enableTapDm',
       setSystemBrightness = 'setSystemBrightness',
       downloadPath = 'downloadPath',
+      cachePlayInfo = 'cachePlayInfo',
       imageSavePath = 'imageSavePath',
       followOrderType = 'followOrderType',
       enableImgMenu = 'enableImgMenu',
@@ -183,7 +191,9 @@ abstract final class SettingBoxKey {
       buvid = 'buvid',
       blockAtOnlyReply = 'blockAtOnlyReply',
       blockReplyAtCount = 'blockReplyAtCount',
-      filterIntro = 'filterIntro';
+      filterIntro = 'filterIntro',
+      showRefreshFAB = 'showRefreshFAB',
+      autoWearMedal = 'autoWearMedal';
 
   static const String superChatType = 'superChatType',
       enableFullScreenSC = 'enableFullScreenSC',
@@ -273,12 +283,17 @@ abstract final class SettingBoxKey {
       reduceLuxColor = 'reduceLuxColor',
       liveCdnUrl = 'liveCdnUrl',
       saveReply = 'saveReply',
-      appFont = 'appFont';
+      appFont = 'appFont',
+      foldDepth = 'foldDepth';
 }
 
 abstract final class LocalCacheKey {
   static const String historyPause = 'historyPause',
       blackMids = 'blackMids',
+      fishBlockMids = 'fishBlockMids',
+      humanWhiteMids = 'humanWhiteMids',
+      subscribedBlockMids = 'subscribedBlockMids',
+      subscribedBlockTxt = 'subscribedBlockTxt',
       danmakuFilterRules = 'danmakuFilterRules',
       mixinKey = 'mixinKey',
       timeStamp = 'timeStamp';

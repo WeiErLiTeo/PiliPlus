@@ -1,3 +1,4 @@
+import 'package:PiliPlus/utils/comment_fish_filter.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 
 class GlobalData {
@@ -12,6 +13,9 @@ class GlobalData {
   }
 
   Set<int> blackMids = Pref.blackMids;
+
+  bool isMidBlocked(Object? mid) =>
+      blackMids.contains(mid) || CommentFishFilter.isMidBlocked(mid);
 
   bool dynamicsWaterfallFlow = Pref.dynamicsWaterfallFlow;
 
@@ -29,5 +33,5 @@ class GlobalData {
 
 extension IterableExt<E> on Iterable<E> {
   Iterable<E> whereNotBlocked(Object? /* mid */ Function(E element) test) =>
-      where((e) => !GlobalData().blackMids.contains(test(e)));
+      where((e) => !GlobalData().isMidBlocked(test(e)));
 }

@@ -51,13 +51,33 @@ abstract final class VideoHttp {
       enableBanWordForZone && zoneRegExp.pattern.isNotEmpty;
 
   // 首页推荐视频
+  //
+  // [desktop] 为 true 时沿用同一个公开网页接口，改用哔哩哔哩官方 Windows
+  // 客户端（Electron 版）首页实际发送的参数组合：plat=1、feed_version=V1、
+  // fresh_type 表示操作类型（0 初次 / 3 刷新 / 4 加载更多）、x_num 与 y_num
+  // 为可视网格的行列数、pc_wx_install 等标记。参数取自该客户端自身渲染层的
+  // 请求代码，不涉及私有接口与设备指纹。
   static Future<LoadingState<List<RcmdVideoItemModel>>> rcmdVideoList({
     required int ps,
     required int freshIdx,
+    bool desktop = false,
   }) async {
-    final res = await Request().get(
-      Api.recommendListWeb,
-      queryParameters: await WbiSign.makSign({
+    final Map<String, Object> params;
+    if (desktop) {
+      params = <String, Object>{
+        'plat': 1,
+        'feed_version': 'V1',
+        'ps': ps,
+        'fresh_idx': freshIdx,
+        // 0 初次进入、3 下拉刷新、4 加载更多
+        'fresh_type': freshIdx == 0 ? 0 : 4,
+        'x_num': 3,
+        'y_num': 4,
+        'pc_wx_install': 0,
+        'pc_wx_gm_install': 0,
+      };
+    } else {
+      params = <String, Object>{
         'version': 1,
         'feed_version': 'V8',
         'homepage_ver': 1,
@@ -65,7 +85,11 @@ abstract final class VideoHttp {
         'fresh_idx': freshIdx,
         'brush': freshIdx,
         'fresh_type': 4,
-      }),
+      };
+    }
+    final res = await Request().get(
+      Api.recommendListWeb,
+      queryParameters: await WbiSign.makSign(params),
     );
     if (res.data['code'] == 0) {
       List<RcmdVideoItemModel> list = <RcmdVideoItemModel>[];
@@ -86,7 +110,7 @@ abstract final class VideoHttp {
   static bool _filterWebRcmd(dynamic i) {
     if (i['goto'] != 'av') return true;
     if (i['owner'] != null &&
-        GlobalData().blackMids.contains(i['owner']['mid'])) {
+        GlobalData().isMidBlocked(i['owner']['mid'])) {
       return true;
     }
     return false;
@@ -100,7 +124,7 @@ abstract final class VideoHttp {
       return true;
     }
     if (i['args'] != null &&
-        GlobalData().blackMids.contains(i['args']['up_id'])) {
+        GlobalData().isMidBlocked(i['args']['up_id'])) {
       return true;
     }
     if (enableFilter &&
@@ -180,7 +204,7 @@ abstract final class VideoHttp {
   }
 
   static bool _filterHotAndRank(dynamic i) {
-    if (GlobalData().blackMids.contains(i['owner']['mid'])) return false;
+    if (GlobalData().isMidBlocked(i['owner']['mid'])) return false;
     if (RecommendFilter.filterTitle(i['title'])) return false;
     if (RecommendFilter.filterLikeRatio(i['stat']['like'], i['stat']['view'])) {
       return false;
@@ -907,7 +931,7 @@ abstract final class VideoHttp {
     String subtitleUrl, {
     SubtitleFormat format = .vtt,
   }) async {
-    final res = await Request().get("https:$subtitleUrl");
+    final res = await Request().get(subtitleUrl.http2https);
     if (res.data?['body'] case List list) {
       switch (format) {
         case .json:

@@ -1,10 +1,12 @@
 import 'package:PiliPlus/grpc/reply.dart';
 import 'package:PiliPlus/http/video.dart';
+import 'package:PiliPlus/models/common/rcmd_source.dart';
 import 'package:PiliPlus/models/common/reply/comment_ip_filter_mode.dart';
 import 'package:PiliPlus/pages/rcmd/controller.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
+import 'package:PiliPlus/pages/setting/widgets/fish_blocklist_dialog.dart';
+import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_target_up_dialog.dart';
-import 'package:PiliPlus/utils/filter_lock_manager.dart';
 import 'package:PiliPlus/utils/member_archive_filter.dart';
 import 'package:PiliPlus/utils/recommend_filter.dart';
 import 'package:PiliPlus/utils/search_filter.dart';
@@ -12,26 +14,16 @@ import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart' hide StatefulBuilder;
 
 List<SettingsModel> get recommendSettings => [
   NormalModel(
-    getTitle: () => FilterLockManager.isLocked ? '过滤上锁模式（已上锁）' : '过滤上锁模式',
-    getSubtitle: () => FilterLockManager.isLocked
-        ? '当前所有过滤开关与规则已锁定，无法直接关闭或修改'
-        : '点击开启上锁，防止冲动关闭或清空过滤规则',
-    leading: const Icon(Icons.lock_outline),
-    onTap: (context, setState) =>
-        FilterLockManager.lockWithConfirm(context, setState),
-  ),
-  const SwitchModel(
-    title: '首页使用app端推荐',
-    subtitle: '若web端推荐不太符合预期，可尝试切换至app端推荐',
-    leading: Icon(Icons.model_training_outlined),
-    setKey: SettingBoxKey.appRcmd,
-    defaultVal: true,
-    needReboot: true,
+    title: '首页推荐来源',
+    getSubtitle: () => Pref.rcmdSource.label,
+    leading: const Icon(Icons.swap_horiz_outlined),
+    onTap: _showRcmdSourceDialog,
   ),
   SwitchModel(
     title: '保留首页推荐刷新',
@@ -75,7 +67,6 @@ List<SettingsModel> get recommendSettings => [
     enableKey: SettingBoxKey.enableMinLikeRatioForRecommend,
     onEnableChanged: (val) =>
         RecommendFilter.enableMinLikeRatioForRecommend = val,
-    lockNodeId: 2,
   ),
   getBanWordModel(
     title: '标题关键词过滤',
@@ -108,7 +99,6 @@ List<SettingsModel> get recommendSettings => [
       SearchFilter.enableFilter =
           val && SearchFilter.searchRegExp.pattern.isNotEmpty;
     },
-    lockNodeId: 3,
   ),
   getBanWordModel(
     title: 'UP主主页视频过滤',
@@ -133,7 +123,6 @@ List<SettingsModel> get recommendSettings => [
     value: () => Pref.memberArchiveFilterMode,
     items: CommentIpFilterMode.values,
     onSelected: (value, setState) {
-      if (FilterLockManager.checkLockedAndToast()) return;
       GStorage.setting.put(SettingBoxKey.memberArchiveFilterMode, value.index);
       MemberArchiveFilter.memberArchiveFilterMode = value;
       setState();
@@ -145,7 +134,6 @@ List<SettingsModel> get recommendSettings => [
     getSubtitle: () =>
         '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForMemberArchiveFilter.length} 位博主',
     onTap: (context, setState) {
-      if (FilterLockManager.checkLockedAndToast()) return;
       SelectTargetUpDialog.show(
         context,
         title: 'UP主主页过滤-选择生效博主',
@@ -171,7 +159,6 @@ List<SettingsModel> get recommendSettings => [
       VideoHttp.enableBanWordForZone = val;
       VideoHttp.enableFilter = val && VideoHttp.zoneRegExp.pattern.isNotEmpty;
     },
-    lockNodeId: 4,
   ),
   getVideoFilterSelectModel(
     title: '视频时长',
@@ -208,6 +195,7 @@ List<SettingsModel> get recommendSettings => [
     defaultVal: true,
     onChanged: (value) => RecommendFilter.applyFilterToRelatedVideos = value,
   ),
+  ...buildFishFilterSettings(),
   getBanWordModel(
     title: '评论区关键词过滤',
     key: SettingBoxKey.banWordForReply,
@@ -229,7 +217,6 @@ List<SettingsModel> get recommendSettings => [
     value: () => Pref.commentWordFilterMode,
     items: CommentIpFilterMode.values,
     onSelected: (value, setState) {
-      if (FilterLockManager.checkLockedAndToast()) return;
       GStorage.setting.put(SettingBoxKey.commentWordFilterMode, value.index);
       ReplyGrpc.commentWordFilterMode = value;
       setState();
@@ -241,7 +228,6 @@ List<SettingsModel> get recommendSettings => [
     getSubtitle: () =>
         '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForWordFilter.length} 位博主',
     onTap: (context, setState) {
-      if (FilterLockManager.checkLockedAndToast()) return;
       SelectTargetUpDialog.show(
         context,
         title: '评论过滤-选择生效博主',
@@ -275,7 +261,6 @@ List<SettingsModel> get recommendSettings => [
     value: () => Pref.commentIpFilterMode,
     items: CommentIpFilterMode.values,
     onSelected: (value, setState) {
-      if (FilterLockManager.checkLockedAndToast()) return;
       GStorage.setting.put(SettingBoxKey.commentIpFilterMode, value.index);
       ReplyGrpc.commentIpFilterMode = value;
       setState();
@@ -287,7 +272,6 @@ List<SettingsModel> get recommendSettings => [
     getSubtitle: () =>
         '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForIpFilter.length} 位博主',
     onTap: (context, setState) {
-      if (FilterLockManager.checkLockedAndToast()) return;
       SelectTargetUpDialog.show(
         context,
         title: 'IP过滤-选择生效博主',
@@ -300,3 +284,48 @@ List<SettingsModel> get recommendSettings => [
     },
   ),
 ];
+
+Future<void> _showRcmdSourceDialog(
+  BuildContext context,
+  VoidCallback setState,
+) async {
+  final res = await showDialog<RcmdSource>(
+    context: context,
+    builder: (context) => SelectDialog<RcmdSource>(
+      title: '首页推荐来源',
+      value: Pref.rcmdSource,
+      values: RcmdSource.values.map((e) => (e, e.label)).toList(),
+      subtitleBuilder: (context, index, type) {
+        if (type == .desktop) {
+          return const Text(
+            '沿用公开的网页推荐接口，按哔哩哔哩官方 Windows 客户端'
+            '首页实际发送的参数组合请求，不涉及私有接口与设备指纹',
+          );
+        }
+        return null;
+      },
+    ),
+  );
+  if (res != null) {
+    _switchRcmdSource(res, setState);
+  }
+}
+
+void _switchRcmdSource(RcmdSource value, VoidCallback setState) {
+  // 同步旧键（旧版本只有 app / web 二选一），保证降级后语义一致
+  GStorage.setting
+      .put(SettingBoxKey.appRcmd, value == RcmdSource.app)
+      .whenComplete(setState);
+  GStorage.setting.put(SettingBoxKey.rcmdSource, value.index);
+  try {
+    Get.find<RcmdController>()
+      ..rcmdSource = value
+      ..lastRefreshAt = null
+      // 用 onReload 而不是 onRefresh：切换来源后不应把旧来源的列表
+      // 拼到新来源的数据前面（"保留上次内容"只在同一来源内生效）
+      ..onReload();
+  } catch (e) {
+    if (kDebugMode) debugPrint('$e');
+  }
+  SmartDialog.showToast('已切换为${value.label}');
+}

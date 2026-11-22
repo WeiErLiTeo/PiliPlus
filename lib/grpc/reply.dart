@@ -5,6 +5,7 @@ import 'package:PiliPlus/grpc/grpc_req.dart';
 import 'package:PiliPlus/grpc/url.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models/common/reply/comment_ip_filter_mode.dart';
+import 'package:PiliPlus/utils/comment_fish_filter.dart';
 import 'package:PiliPlus/utils/global_data.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:fixnum/fixnum.dart';
@@ -136,6 +137,7 @@ abstract final class ReplyGrpc {
 
   static bool needRemoveGrpcWithUp(ReplyInfo reply, int? upMid) {
     if (GlobalData().blackMids.contains(reply.mid.toInt()) ||
+        CommentFishFilter.shouldBlockReply(reply, upMid) ||
         _blockReplyAtCount(reply) ||
         _blockAtOnlyReply(reply) ||
         (antiGoodsReply && _needRemoveGoodGrpc(reply))) {
@@ -175,12 +177,21 @@ abstract final class ReplyGrpc {
       MainListReply.fromBuffer,
     );
     if (res case Success(:final response)) {
-      final upMid = response.hasSubjectControl() && response.subjectControl.hasUpMid()
-          ? response.subjectControl.upMid.toInt()
-          : null;
+      final upMid =
+          response.hasSubjectControl() && response.subjectControl.hasUpMid()
+              ? response.subjectControl.upMid.toInt()
+              : null;
 
-      if (response.hasUpTop() && needRemoveGrpcWithUp(response.upTop, upMid)) {
-        response.clearUpTop();
+      // keyword & fish filter
+      if (response.hasUpTop()) {
+        final topReply = response.upTop;
+        if (needRemoveGrpcWithUp(topReply, upMid)) {
+          response.clearUpTop();
+        } else {
+          topReply.replies.removeWhere(
+            (child) => needRemoveGrpcWithUp(child, upMid),
+          );
+        }
       }
       if (response.hasAdminTop() && needRemoveGrpcWithUp(response.adminTop, upMid)) {
         response.clearAdminTop();
@@ -198,6 +209,19 @@ abstract final class ReplyGrpc {
           return hasMatch;
         });
       }
+
+      if (response.replies.isEmpty && !response.hasUpTop()) {
+        final offset = response.paginationReply.nextOffset;
+        if (offset.isNotEmpty && !response.cursor.isEnd) {
+          return mainList(
+            type: type,
+            oid: oid,
+            rpid: rpid,
+            mode: mode,
+            offset: offset,
+          );
+        }
+      }
     }
     return res;
   }
@@ -209,6 +233,7 @@ abstract final class ReplyGrpc {
     required int rpid,
     required Mode mode,
     required String? offset,
+    Map<Int64, ReplyInfo>? removed,
   }) async {
     final res = await GrpcReq.request(
       GrpcUrl.detailList,
@@ -224,10 +249,19 @@ abstract final class ReplyGrpc {
       DetailListReply.fromBuffer,
     );
     if (res case Success(:final response)) {
-      final upMid = response.hasSubjectControl() && response.subjectControl.hasUpMid()
-          ? response.subjectControl.upMid.toInt()
-          : null;
-      response.root.replies.removeWhere((child) => needRemoveGrpcWithUp(child, upMid));
+      final upMid =
+          response.hasSubjectControl() && response.subjectControl.hasUpMid()
+              ? response.subjectControl.upMid.toInt()
+              : null;
+      response.root.replies.removeWhere(
+        removed == null
+            ? (child) => needRemoveGrpcWithUp(child, upMid)
+            : (i) {
+                final flag = needRemoveGrpcWithUp(i, upMid);
+                if (flag) removed[i.id] = i;
+                return flag;
+              },
+      );
     }
     return res;
   }

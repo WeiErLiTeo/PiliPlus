@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:PiliPlus/common/widgets/gesture/horizontal_drag_gesture_recognizer.dart'
@@ -13,7 +14,9 @@ import 'package:PiliPlus/models/common/member/tab_type.dart';
 import 'package:PiliPlus/models/common/mine_tab_type.dart';
 import 'package:PiliPlus/models/common/msg/msg_unread_type.dart';
 import 'package:PiliPlus/models/common/nav_bar_config.dart';
+import 'package:PiliPlus/models/common/rcmd_source.dart';
 import 'package:PiliPlus/models/common/reply/comment_ip_filter_mode.dart';
+import 'package:PiliPlus/models/common/reply/fish_filter_strictness.dart';
 import 'package:PiliPlus/models/common/reply/reply_sort_type.dart';
 import 'package:PiliPlus/models/common/sponsor_block/segment_type.dart';
 import 'package:PiliPlus/models/common/sponsor_block/skip_type.dart';
@@ -365,8 +368,100 @@ abstract final class Pref {
         mids.toList(),
       );
 
-  static bool get filterLockEnabled =>
-      _setting.get(SettingBoxKey.filterLockEnabled, defaultValue: false);
+  static bool get enableCommentFishFilter =>
+      _setting.get(SettingBoxKey.enableCommentFishFilter, defaultValue: true);
+
+  static FishFilterStrictness get commentFishStrictness =>
+      FishFilterStrictness.values.elementAtOrNull(
+        _setting.get(
+          SettingBoxKey.commentFishStrictness,
+          defaultValue: FishFilterStrictness.standard.index,
+        ),
+      ) ??
+      FishFilterStrictness.standard;
+
+  static String get banNameForReply =>
+      _setting.get(SettingBoxKey.banNameForReply, defaultValue: '');
+
+  static bool get enableBanNameForReply =>
+      _setting.get(SettingBoxKey.enableBanNameForReply, defaultValue: true);
+
+  static int get minLevelForReply =>
+      _setting.get(SettingBoxKey.minLevelForReply, defaultValue: 0);
+
+  static bool get enableMinLevelForReply =>
+      _setting.get(SettingBoxKey.enableMinLevelForReply, defaultValue: true);
+
+  static List<String> get fishSubscribeUrls {
+    final list = _setting.get(SettingBoxKey.fishSubscribeUrls);
+    if (list is List) {
+      return list.map((e) => e.toString()).toList();
+    }
+    return <String>[];
+  }
+
+  static set fishSubscribeUrls(List<String> urls) =>
+      _setting.put(SettingBoxKey.fishSubscribeUrls, urls);
+
+  static Map<int, String> _decodeUidMap(String key) {
+    final raw = _localCache.get(key);
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          final result = <int, String>{};
+          decoded.forEach((k, v) {
+            final uid = int.tryParse(k.toString());
+            if (uid != null && uid > 0) {
+              result[uid] = v?.toString() ?? '';
+            }
+          });
+          return result;
+        }
+      } catch (_) {}
+    }
+    return <int, String>{};
+  }
+
+  static void _encodeUidMap(String key, Map<int, String> map) {
+    final stringKeyMap = <String, String>{
+      for (final e in map.entries) e.key.toString(): e.value,
+    };
+    _localCache.put(key, jsonEncode(stringKeyMap));
+  }
+
+  static Map<int, String> get fishBlockMidsMap =>
+      _decodeUidMap(LocalCacheKey.fishBlockMids);
+
+  static set fishBlockMidsMap(Map<int, String> map) =>
+      _encodeUidMap(LocalCacheKey.fishBlockMids, map);
+
+  static Map<int, String> get humanWhiteMidsMap =>
+      _decodeUidMap(LocalCacheKey.humanWhiteMids);
+
+  static set humanWhiteMidsMap(Map<int, String> map) =>
+      _encodeUidMap(LocalCacheKey.humanWhiteMids, map);
+
+  static Set<int> get subscribedBlockMids {
+    final val = _localCache.get(LocalCacheKey.subscribedBlockMids);
+    if (val is Set<int>) return Set<int>.from(val);
+    if (val is Iterable) {
+      return val
+          .map((e) => e is int ? e : int.tryParse(e.toString()))
+          .whereType<int>()
+          .toSet();
+    }
+    return <int>{};
+  }
+
+  static set subscribedBlockMids(Set<int> mids) =>
+      _localCache.put(LocalCacheKey.subscribedBlockMids, mids);
+
+  static String get subscribedBlockTxt =>
+      _localCache.get(LocalCacheKey.subscribedBlockTxt, defaultValue: '');
+
+  static set subscribedBlockTxt(String txt) =>
+      _localCache.put(LocalCacheKey.subscribedBlockTxt, txt);
 
   static String get banIpForReply =>
       _setting.get(SettingBoxKey.banIpForReply, defaultValue: '');
@@ -405,6 +500,18 @@ abstract final class Pref {
 
   static bool get appRcmd =>
       _setting.get(SettingBoxKey.appRcmd, defaultValue: true);
+
+  /// 首页推荐来源。新键优先，旧版本只存了 [appRcmd] 布尔值，按原语义映射。
+  static RcmdSource get rcmdSource {
+    final index = _setting.get(
+      SettingBoxKey.rcmdSource,
+      defaultValue: -1,
+    );
+    if (index >= 0 && index < RcmdSource.values.length) {
+      return RcmdSource.values[index];
+    }
+    return appRcmd ? RcmdSource.app : RcmdSource.web;
+  }
 
   static String get systemProxyHost =>
       _setting.get(SettingBoxKey.systemProxyHost, defaultValue: '');
@@ -1213,4 +1320,16 @@ abstract final class Pref {
 
   static bool get filterIntro =>
       _setting.get(SettingBoxKey.filterIntro, defaultValue: false);
+
+  static int get foldDepth =>
+      _setting.get(SettingBoxKey.foldDepth, defaultValue: 0);
+
+  static bool get showRefreshFAB =>
+      _setting.get(SettingBoxKey.showRefreshFAB, defaultValue: true);
+
+  static bool get cachePlayInfo =>
+      _setting.get(SettingBoxKey.cachePlayInfo, defaultValue: true);
+
+  static bool get autoWearMedal =>
+      _setting.get(SettingBoxKey.autoWearMedal, defaultValue: false);
 }

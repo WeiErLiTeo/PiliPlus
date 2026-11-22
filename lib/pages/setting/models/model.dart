@@ -4,7 +4,6 @@ import 'package:PiliPlus/pages/setting/widgets/normal_item.dart';
 import 'package:PiliPlus/pages/setting/widgets/popup_item.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/switch_item.dart';
-import 'package:PiliPlus/utils/filter_lock_manager.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:flutter/services.dart'
@@ -117,7 +116,6 @@ class NormalModel extends SettingsModel {
   final ValueGetter<String>? getSubtitle;
   final Widget Function(ThemeData theme)? getTrailing;
   final void Function(BuildContext context, VoidCallback setState)? onTap;
-  final int? lockNodeId;
 
   const NormalModel({
     super.subtitle,
@@ -129,7 +127,6 @@ class NormalModel extends SettingsModel {
     this.getSubtitle,
     this.getTrailing,
     this.onTap,
-    this.lockNodeId,
   }) : assert(title != null || getTitle != null);
 
   const NormalModel.split({
@@ -142,7 +139,6 @@ class NormalModel extends SettingsModel {
     this.getSubtitle,
     this.getTrailing,
   }) : onTap = null,
-       lockNodeId = null,
        assert(title != null || getTitle != null);
 
   @override
@@ -161,7 +157,6 @@ class NormalModel extends SettingsModel {
     onTap: onTap,
     contentPadding: contentPadding,
     titleStyle: titleStyle,
-    lockNodeId: lockNodeId,
   );
 }
 
@@ -222,11 +217,9 @@ SettingsModel getBanWordModel({
   String? banScope,
   String? enableKey,
   ValueChanged<bool>? onEnableChanged,
-  int? lockNodeId,
 }) {
   String banWord = GStorage.setting.get(key, defaultValue: '');
   return NormalModel(
-    lockNodeId: lockNodeId,
     leading: const Icon(Icons.filter_alt_outlined),
     title: title,
     getSubtitle: () {
@@ -250,7 +243,6 @@ SettingsModel getBanWordModel({
                   child: Switch(
                     value: isEnabled,
                     onChanged: (val) {
-                      if (FilterLockManager.checkLockedAndToast()) return;
                       GStorage.setting.put(enableKey, val);
                       onEnableChanged?.call(val);
                       setSwitchState(() {});
@@ -260,14 +252,6 @@ SettingsModel getBanWordModel({
               },
             ),
     onTap: (context, setState) {
-      if (FilterLockManager.isLocked) {
-        if (lockNodeId != null &&
-            FilterLockManager.onNodeTap(context, lockNodeId, setState)) {
-          return;
-        }
-        FilterLockManager.checkLockedAndToast();
-        return;
-      }
       final textController = TextEditingController(text: banWord);
       showDialog(
         context: context,
@@ -429,12 +413,10 @@ SettingsModel getVideoFilterSelectModel({
   ValueChanged<int>? onChanged,
   String? enableKey,
   ValueChanged<bool>? onEnableChanged,
-  int? lockNodeId,
 }) {
   assert(!isFilter || onChanged != null);
   int value = GStorage.setting.get(key, defaultValue: defaultValue);
   return NormalModel(
-    lockNodeId: lockNodeId,
     title: '$title${isFilter ? '过滤' : ''}',
     leading: const Icon(Icons.timelapse_outlined),
     subtitle: subtitle,
@@ -464,7 +446,6 @@ SettingsModel getVideoFilterSelectModel({
                   child: Switch(
                     value: isEnabled,
                     onChanged: (val) {
-                      if (FilterLockManager.checkLockedAndToast()) return;
                       GStorage.setting.put(enableKey, val);
                       onEnableChanged?.call(val);
                       setSwitchState(() {});
@@ -474,14 +455,6 @@ SettingsModel getVideoFilterSelectModel({
               },
             ),
     onTap: (context, setState) async {
-      if (FilterLockManager.isLocked) {
-        if (lockNodeId != null &&
-            FilterLockManager.onNodeTap(context, lockNodeId, setState)) {
-          return;
-        }
-        FilterLockManager.checkLockedAndToast();
-        return;
-      }
       var result = await showDialog<int>(
         context: context,
         builder: (context) => SelectDialog<int>(

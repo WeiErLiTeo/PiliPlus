@@ -72,6 +72,7 @@ class MemberVideoCtr
   bool isLoadPrevious = false;
   bool? hasPrev;
 
+  @override
   GlobalKey<RefreshIndicatorState>? refreshKey;
 
   @override

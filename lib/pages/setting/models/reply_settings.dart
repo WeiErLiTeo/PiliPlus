@@ -5,9 +5,10 @@ import 'package:PiliPlus/grpc/reply.dart';
 import 'package:PiliPlus/models/common/reply/comment_ip_filter_mode.dart';
 import 'package:PiliPlus/models/common/reply/reply_sort_type.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
+import 'package:PiliPlus/pages/setting/widgets/fish_blocklist_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_target_up_dialog.dart';
+import 'package:PiliPlus/pages/setting/widgets/slider_dialog.dart';
 import 'package:PiliPlus/pages/video/reply/widgets/reply_item_grpc.dart';
-import 'package:PiliPlus/utils/filter_lock_manager.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -104,13 +105,13 @@ List<SettingsModel> get replySettings => [
       ReplyGrpc.enableFilter = val && ReplyGrpc.replyRegExp.pattern.isNotEmpty;
     },
   ),
+  ...buildFishFilterSettings(),
   PopupModel<CommentIpFilterMode>(
     title: '评论过滤-博主特定模式',
     leading: const Icon(Icons.tune_outlined),
     value: () => Pref.commentWordFilterMode,
     items: CommentIpFilterMode.values,
     onSelected: (value, setState) {
-      if (FilterLockManager.checkLockedAndToast()) return;
       GStorage.setting.put(SettingBoxKey.commentWordFilterMode, value.index);
       ReplyGrpc.commentWordFilterMode = value;
       setState();
@@ -122,7 +123,6 @@ List<SettingsModel> get replySettings => [
     getSubtitle: () =>
         '从关注列表中勾选，当前已选 ${Pref.targetUpMidsForWordFilter.length} 位博主',
     onTap: (context, setState) {
-      if (FilterLockManager.checkLockedAndToast()) return;
       SelectTargetUpDialog.show(
         context,
         title: '评论过滤-选择生效博主',
@@ -133,6 +133,12 @@ List<SettingsModel> get replySettings => [
         },
       ).whenComplete(setState);
     },
+  ),
+  NormalModel(
+    title: '线程式评论折叠阈值',
+    getSubtitle: () => '当前：「${Pref.foldDepth}」，0为不折叠',
+    leading: const Icon(Icons.compress),
+    onTap: _showReplyDepthDialog,
   ),
   SwitchModel(
     title: '评论区搜索关键词',
@@ -272,3 +278,24 @@ Future<void> _showReplyAtBlockDialog(
 
 void _onBlockAtOnlyReplyChanged(bool value) =>
     ReplyGrpc.blockAtOnlyReply = value;
+
+Future<void> _showReplyDepthDialog(
+  BuildContext context,
+  VoidCallback setState,
+) async {
+  final res = await showDialog<double>(
+    context: context,
+    builder: (context) => SliderDialog(
+      title: const Text('线程式评论折叠阈值'),
+      min: 0,
+      max: 18,
+      divisions: 19,
+      precise: 0,
+      value: Pref.foldDepth.toDouble(),
+    ),
+  );
+  if (res != null) {
+    GStorage.setting.put(SettingBoxKey.foldDepth, res.toInt());
+    setState();
+  }
+}
