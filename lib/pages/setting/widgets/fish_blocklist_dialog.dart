@@ -2,6 +2,8 @@ import 'dart:convert' show utf8;
 import 'dart:typed_data' show Uint8List;
 
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
+import 'package:PiliPlus/models/common/image_type.dart';
 import 'package:PiliPlus/models/common/reply/fish_filter_strictness.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
 import 'package:PiliPlus/pages/setting/widgets/fish_github_sync_tab.dart';
@@ -171,8 +173,47 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final Set<int> _selectedCaptured = <int>{};
+  final Set<int> _requestedAvatars = <int>{};
+  int _avatarFetchBudget = 30;
   String _searchKeyword = '';
   bool _isFetching = false;
+
+  void _openMemberSpace(int uid) {
+    if (uid <= 0) return;
+    Get.toNamed('/member?mid=$uid');
+  }
+
+  Widget _buildClickableAvatar(int uid, {String? avatarHint}) {
+    final cached = (avatarHint != null && avatarHint.isNotEmpty)
+        ? avatarHint
+        : CommentFishFilter.getCachedAvatar(uid);
+    if (cached.isEmpty &&
+        _avatarFetchBudget > 0 &&
+        _requestedAvatars.add(uid)) {
+      _avatarFetchBudget--;
+      CommentFishFilter.fetchAvatarIfMissing(uid).then((face) {
+        if (mounted && face != null && face.isNotEmpty) {
+          setState(() {});
+        }
+      });
+    }
+    return Tooltip(
+      message: '点击查看主页',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => _openMemberSpace(uid),
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: NetworkImgLayer(
+            src: cached,
+            width: 36,
+            height: 36,
+            type: ImageType.avatar,
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -660,14 +701,26 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
                     final item = entries[index];
                     return ListTile(
                       dense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      leading: _buildClickableAvatar(item.key),
                       title: Text(
                         item.value.isNotEmpty
-                            ? '${item.value} (${item.key})'
+                            ? item.value
                             : 'UID: ${item.key}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      subtitle: item.value.isNotEmpty
+                          ? Text(
+                              'UID: ${item.key}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                            )
+                          : null,
                       trailing: IconButton(
                         icon: const Icon(Icons.close, size: 18),
                         tooltip: '移除',
@@ -833,54 +886,104 @@ class _FishBlocklistDialogState extends State<FishBlocklistDialog>
                   itemBuilder: (context, index) {
                     final item = entries[index];
                     final checked = _selectedCaptured.contains(item.uid);
-                    return ListTile(
-                      dense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 2),
-                      leading: Checkbox(
-                        value: checked,
-                        visualDensity: VisualDensity.compact,
-                        onChanged: (v) {
-                          setState(() {
-                            if (v == true) {
-                              _selectedCaptured.add(item.uid);
-                            } else {
-                              _selectedCaptured.remove(item.uid);
-                            }
-                          });
-                        },
+                    void toggleSelect() {
+                      setState(() {
+                        if (checked) {
+                          _selectedCaptured.remove(item.uid);
+                        } else {
+                          _selectedCaptured.add(item.uid);
+                        }
+                      });
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 2,
+                        vertical: 5,
                       ),
-                      title: Text(
-                        '${item.name.isNotEmpty ? item.name : "UID:${item.uid}"} '
-                        '${item.level >= 0 ? "Lv${item.level} " : ""}'
-                        '· ${item.reason}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                      subtitle: Text(
-                        'UID: ${item.uid}'
-                        '${item.snippet.isNotEmpty ? "\n${item.snippet}" : ""}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: theme.colorScheme.outline,
-                        ),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
+                          SizedBox(
+                            width: 30,
+                            height: 32,
+                            child: Checkbox(
+                              value: checked,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                              onChanged: (_) => toggleSelect(),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          _buildClickableAvatar(
+                            item.uid,
+                            avatarHint: item.avatar,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(6),
+                              onTap: toggleSelect,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 2,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '${item.name.isNotEmpty ? item.name : "UID:${item.uid}"}'
+                                      '${item.level >= 0 ? " Lv${item.level}" : ""}'
+                                      ' · ${item.reason}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                    Text(
+                                      'UID: ${item.uid}'
+                                      '${item.snippet.isNotEmpty ? "\n${item.snippet}" : ""}',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: theme.colorScheme.outline,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                           IconButton(
-                            icon: const Icon(Icons.verified_user_outlined, size: 18),
+                            constraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(
+                              Icons.verified_user_outlined,
+                              size: 18,
+                            ),
                             tooltip: '是活人，移入白名单',
                             onPressed: () {
-                              CommentFishFilter.moveCapturedToWhitelist(item.uid);
+                              CommentFishFilter.moveCapturedToWhitelist(
+                                item.uid,
+                              );
                               _selectedCaptured.remove(item.uid);
                               setState(() {});
                               SmartDialog.showToast('已加入活人白名单，永不再误抓');
                             },
                           ),
                           IconButton(
+                            constraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
                             icon: const Icon(Icons.close, size: 18),
                             tooltip: '忽略移除',
                             onPressed: () {

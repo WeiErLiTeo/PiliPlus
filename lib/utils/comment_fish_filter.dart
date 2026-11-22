@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart';
+import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/http/member.dart';
 import 'package:PiliPlus/models/common/reply/fish_filter_strictness.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:dio/dio.dart';
@@ -26,6 +28,7 @@ class CapturedFishEntry {
   final String reason;
   final String snippet;
   final int capturedAt;
+  final String avatar;
 
   const CapturedFishEntry({
     required this.uid,
@@ -34,7 +37,18 @@ class CapturedFishEntry {
     required this.reason,
     required this.snippet,
     required this.capturedAt,
+    this.avatar = '',
   });
+
+  CapturedFishEntry copyWith({String? avatar}) => CapturedFishEntry(
+    uid: uid,
+    name: name,
+    level: level,
+    reason: reason,
+    snippet: snippet,
+    capturedAt: capturedAt,
+    avatar: avatar ?? this.avatar,
+  );
 
   String get displayNote {
     final parts = <String>[];
@@ -62,6 +76,7 @@ class CapturedFishEntry {
     'reason': reason,
     'snippet': snippet,
     'capturedAt': capturedAt,
+    if (avatar.isNotEmpty) 'avatar': avatar,
   };
 
   factory CapturedFishEntry.fromJson(Map<String, dynamic> json) =>
@@ -72,6 +87,7 @@ class CapturedFishEntry {
         reason: (json['reason'] ?? '').toString(),
         snippet: (json['snippet'] ?? '').toString(),
         capturedAt: (json['capturedAt'] as num?)?.toInt() ?? 0,
+        avatar: (json['avatar'] ?? '').toString(),
       );
 }
 
@@ -110,6 +126,10 @@ abstract final class CommentFishFilter {
   static Set<int> humanWhiteMids = humanWhiteMap.keys.toSet();
 
   static Map<int, CapturedFishEntry> capturedMap = _loadCapturedMap();
+  static Map<int, String> avatarCache = Pref.fishAvatarCacheMap;
+  static const int _maxAvatarCacheCount = 1000;
+  static final Set<int> _avatarAttempted = <int>{};
+  static Future<void> _avatarFetchChain = Future<void>.value();
 
   static Set<int> subscribedBlockMids = Pref.subscribedBlockMids;
   static String subscribedRawTxt = Pref.subscribedBlockTxt;
@@ -204,6 +224,61 @@ abstract final class CommentFishFilter {
     );
   }
 
+  static String getCachedAvatar(int uid) {
+    final capturedFace = capturedMap[uid]?.avatar ?? '';
+    if (capturedFace.isNotEmpty) return capturedFace;
+    return avatarCache[uid] ?? '';
+  }
+
+  static void cacheAvatar(int uid, String? face) {
+    final cleaned = face?.trim() ?? '';
+    if (uid <= 0 || cleaned.isEmpty) return;
+    if (avatarCache[uid] == cleaned) return;
+    avatarCache[uid] = cleaned;
+    if (avatarCache.length > _maxAvatarCacheCount) {
+      final dropCount = avatarCache.length - _maxAvatarCacheCount;
+      final keysToRemove = avatarCache.keys.take(dropCount).toList();
+      for (final k in keysToRemove) {
+        avatarCache.remove(k);
+      }
+    }
+    Pref.fishAvatarCacheMap = avatarCache;
+  }
+
+  /// 对旧记录或文本导入的 UID 做限速补全头像（串行 + 220ms 间隔，避免触发风控）
+  static Future<String?> fetchAvatarIfMissing(int uid) {
+    if (uid <= 0) return Future.value(null);
+    final cached = getCachedAvatar(uid);
+    if (cached.isNotEmpty) return Future.value(cached);
+    if (!_avatarAttempted.add(uid)) return Future.value(null);
+
+    final next = _avatarFetchChain.then<String?>((_) async {
+      try {
+        final res = await MemberHttp.memberCardInfo(mid: uid);
+        String? face;
+        if (res case Success(:final response)) {
+          final rawFace = response.card?.face?.trim() ?? '';
+          if (rawFace.isNotEmpty) {
+            face = rawFace;
+            cacheAvatar(uid, rawFace);
+            final entry = capturedMap[uid];
+            if (entry != null && entry.avatar.isEmpty) {
+              capturedMap[uid] = entry.copyWith(avatar: rawFace);
+              _saveCapturedMap();
+            }
+          }
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 220));
+        return face;
+      } catch (_) {
+        await Future<void>.delayed(const Duration(milliseconds: 220));
+        return null;
+      }
+    });
+    _avatarFetchChain = next.then((_) {});
+    return next;
+  }
+
   /// 统一 UID 屏蔽检查：评论区 + 首页推荐 + 热门 + 排行 + 相关视频 + 搜索 均生效
   /// 活人白名单优先级最高，不会被本地黑名单或远程订阅误伤
   static bool isMidBlocked(Object? mid) {
@@ -285,9 +360,17 @@ abstract final class CommentFishFilter {
 
     final rawMsg = reply.content.message.replaceAll(RegExp(r'\s+'), ' ').trim();
     final snippet = rawMsg.length > 45 ? '${rawMsg.substring(0, 45)}…' : rawMsg;
+    final avatar = member.face.trim();
+
+    if (avatar.isNotEmpty) {
+      cacheAvatar(mid, avatar);
+    }
 
     final existing = capturedMap[mid];
-    if (existing != null && existing.reason == reason && existing.name == member.name) {
+    if (existing != null &&
+        existing.reason == reason &&
+        existing.name == member.name &&
+        (existing.avatar.isNotEmpty || avatar.isEmpty)) {
       return;
     }
 
@@ -298,6 +381,7 @@ abstract final class CommentFishFilter {
       reason: reason,
       snippet: snippet,
       capturedAt: DateTime.now().millisecondsSinceEpoch,
+      avatar: avatar.isNotEmpty ? avatar : (existing?.avatar ?? ''),
     );
     _saveCapturedMap();
   }
@@ -382,13 +466,17 @@ abstract final class CommentFishFilter {
 
   // --- 本地黑白名单与待审池操作 ---
 
-  static void addFishMid(int mid, {String name = ''}) {
+  static void addFishMid(int mid, {String name = '', String avatar = ''}) {
     if (mid <= 0) return;
     humanWhiteMap.remove(mid);
     humanWhiteMids.remove(mid);
-    capturedMap.remove(mid);
+    final removedCaptured = capturedMap.remove(mid);
     fishBlockMap[mid] = name.trim();
     fishBlockMids.add(mid);
+    cacheAvatar(
+      mid,
+      avatar.isNotEmpty ? avatar : removedCaptured?.avatar,
+    );
     Pref.humanWhiteMidsMap = humanWhiteMap;
     Pref.fishBlockMidsMap = fishBlockMap;
     _saveCapturedMap();
@@ -401,13 +489,17 @@ abstract final class CommentFishFilter {
     }
   }
 
-  static void addWhiteMid(int mid, {String name = ''}) {
+  static void addWhiteMid(int mid, {String name = '', String avatar = ''}) {
     if (mid <= 0) return;
     fishBlockMap.remove(mid);
     fishBlockMids.remove(mid);
-    capturedMap.remove(mid);
+    final removedCaptured = capturedMap.remove(mid);
     humanWhiteMap[mid] = name.trim();
     humanWhiteMids.add(mid);
+    cacheAvatar(
+      mid,
+      avatar.isNotEmpty ? avatar : removedCaptured?.avatar,
+    );
     Pref.fishBlockMidsMap = fishBlockMap;
     Pref.humanWhiteMidsMap = humanWhiteMap;
     _saveCapturedMap();
@@ -442,6 +534,7 @@ abstract final class CommentFishFilter {
       final note = entry.displayNote;
       fishBlockMap[mid] = note;
       fishBlockMids.add(mid);
+      cacheAvatar(mid, entry.avatar);
       promoted[mid] = note;
     }
     if (promoted.isNotEmpty) {
@@ -455,7 +548,7 @@ abstract final class CommentFishFilter {
   static void moveCapturedToWhitelist(int mid) {
     final entry = capturedMap.remove(mid);
     final name = entry?.name ?? '';
-    addWhiteMid(mid, name: name);
+    addWhiteMid(mid, name: name, avatar: entry?.avatar ?? '');
   }
 
   static String exportCapturedToTxt() {
@@ -482,6 +575,7 @@ abstract final class CommentFishFilter {
           reason: '手动编辑',
           snippet: '',
           capturedAt: now,
+          avatar: getCachedAvatar(e.key),
         ),
     };
     _saveCapturedMap();

@@ -298,6 +298,7 @@ abstract final class LocalCacheKey {
       fishBlockMids = 'fishBlockMids',
       humanWhiteMids = 'humanWhiteMids',
       fishCapturedMids = 'fishCapturedMids',
+      fishAvatarCache = 'fishAvatarCache',
       subscribedBlockMids = 'subscribedBlockMids',
       subscribedBlockTxt = 'subscribedBlockTxt',
       fishGithubToken = 'fishGithubToken',

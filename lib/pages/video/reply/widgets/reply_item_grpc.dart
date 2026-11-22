@@ -1450,7 +1450,11 @@ class ReplyItemGrpc extends StatelessWidget {
               Get.back();
               final mid = item.mid.toInt();
               final note = '${item.member.name} | Lv${item.member.level}';
-              CommentFishFilter.addFishMid(mid, name: note);
+              CommentFishFilter.addFishMid(
+                mid,
+                name: note,
+                avatar: item.member.face,
+              );
               onDelete?.call();
               if (FishGithubSync.shouldAutoUpload) {
                 FishGithubSync.enqueueUpload(mid, note: note);

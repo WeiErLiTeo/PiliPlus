@@ -472,6 +472,12 @@ abstract final class Pref {
   static set fishCapturedRawJson(String raw) =>
       _localCache.put(LocalCacheKey.fishCapturedMids, raw);
 
+  static Map<int, String> get fishAvatarCacheMap =>
+      _decodeUidMap(LocalCacheKey.fishAvatarCache);
+
+  static set fishAvatarCacheMap(Map<int, String> map) =>
+      _encodeUidMap(LocalCacheKey.fishAvatarCache, map);
+
   static String get fishGithubRepo =>
       _setting.get(SettingBoxKey.fishGithubRepo, defaultValue: '');
 
